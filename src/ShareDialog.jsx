@@ -181,9 +181,9 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   const onFilm = (id) => { if (armed) { setOpt(armed, id); setArmed(null); } else setSubject(id); };
 
   return (
-    <dialog ref={ref} className="sharebox" onClose={onClose} onCancel={() => abort.current?.abort()}>
+    <dialog ref={ref} className="sharebox" aria-labelledby="sb-title" onClose={onClose} onCancel={() => abort.current?.abort()}>
       <div className="sb-head">
-        <h2>Share</h2>
+        <h2 id="sb-title">Share</h2>
         <div className={`sb-film${armed ? ' armed' : ''}`}>
           {armed && <span className="sb-arm">Click a photo to set <b>{pickOpts.find((o) => o.id === armed)?.label}</b></span>}
           {tree?.nodes.map((n) => {

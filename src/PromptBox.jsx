@@ -13,6 +13,7 @@ export default function PromptBox({ onSubmit, chips = [], placeholder = 'What if
       <div className="row">
         <textarea
           rows={2}
+          aria-label="What if…"
           value={text}
           autoFocus={autoFocus}
           placeholder={placeholder}

@@ -26,7 +26,7 @@ function PhotoNode({ id, data, selected }) {
   return (
     <div className={`photo ${data.status}${selected ? ' selected' : ''}${data.star ? ' star' : ''}`} style={{ width: NODE_W }}>
       <div className="img" style={{ height: imageHeight(data) }} onDoubleClick={() => ready && open(id)}>
-        {src && <img src={src} alt="" draggable={false} className={loading && data.ghost ? 'ghost' : ''} />}
+        {src && <img src={src} alt={data.parents.length ? data.prompt : (data.name || 'Seed photo')} draggable={false} className={loading && data.ghost ? 'ghost' : ''} />}
         {loading && <div className="spinner" />}
         {data.status === 'error' && (
           <div className="err" title={data.error}>

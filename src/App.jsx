@@ -39,6 +39,8 @@ function useMedia(q) {
 const COMBINED = 'howdoilook.combined';
 const MAP_KEY = 'howdoilook.minimap';
 const TOUR_SEEN = 'howdoilook.tourSeen';
+// Camera moves respect prefers-reduced-motion (CSS can't reach a setViewport animation).
+const DUR = (ms) => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms);
 
 const toNode = (r) => ({
   id: r.id, type: 'photo', position: { x: 0, y: 0 },
@@ -148,13 +150,13 @@ export default function App() {
     setNodes((cur) => {
       const laid = layout(withFilm(typeof next === 'function' ? next(cur) : next));
       const n = focusId && laid.find((x) => x.id === focusId);
-      if (n) requestAnimationFrame(() => rf.setCenter(n.position.x + NODE_W / 2, n.position.y + n.height / 2, { zoom: rf.getZoom(), duration: 300 }));
+      if (n) requestAnimationFrame(() => rf.setCenter(n.position.x + NODE_W / 2, n.position.y + n.height / 2, { zoom: rf.getZoom(), duration: DUR(300) }));
       return laid;
     });
   }, [rf, setNodes]);
   // Fit from the sizes we already know (layout sets width/height on every node), so it works
   // before React Flow has measured anything — e.g. in a background tab, where measurement stalls.
-  const fitAll = useCallback((padding = 0.2, duration = 300) => {
+  const fitAll = useCallback((padding = 0.2, duration = DUR(300)) => {
     const ns = rf.getNodes().filter((n) => n.type !== 'plate' && n.width && n.height);
     const box = document.querySelector('.react-flow')?.getBoundingClientRect();
     if (!ns.length || !box) return;
@@ -456,7 +458,7 @@ export default function App() {
     if (!target) return;
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === target.id })));
     setLightbox((l) => (l ? target.id : l));
-    rf.setCenter(target.position.x + NODE_W / 2, target.position.y + target.height / 2, { zoom: rf.getZoom(), duration: 250 });
+    rf.setCenter(target.position.x + NODE_W / 2, target.position.y + target.height / 2, { zoom: rf.getZoom(), duration: DUR(250) });
   }, [rf, setNodes]);
 
   // The spotlight goes away on the first click or keypress anywhere, and never comes back.
@@ -489,6 +491,9 @@ export default function App() {
       const arrow = ARROWS[e.key];
       const inText = t.closest?.('input,textarea,select');
       if (inText && !(arrow && t.tagName === 'TEXTAREA' && !t.value)) { if (e.key === 'Escape') t.blur(); return; }
+      // The share studio and the settings drawer own their keys; a focused button keeps Space/Enter for itself.
+      if (document.querySelector('dialog[open]:not(.lightbox)') || t.closest?.('.drawer')) return;
+      if ((e.code === 'Space' || e.key === 'Enter') && t.closest?.('button,a,summary,[role="button"]')) return;
       if (arrow) { e.preventDefault(); return navigate(arrow); }
       if (e.key === 'Enter') { const ta = document.querySelector('.react-flow__node.selected textarea'); if (ta) { e.preventDefault(); ta.focus(); } return; }
       if (e.code === 'Space') { e.preventDefault(); setCompare(true); }
@@ -535,7 +540,7 @@ export default function App() {
     // Centre the card in the upper part of the screen; the prompt sheet takes the bottom ~40%.
     const box = document.querySelector('.react-flow')?.getBoundingClientRect();
     const lift = box ? (box.height * 0.12) / zoom : 0;
-    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + (n.height || 300) / 2 + lift, { zoom, duration: 250 });
+    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + (n.height || 300) / 2 + lift, { zoom, duration: DUR(250) });
   }, [narrow, soloId]); // eslint-disable-line
 
   // Multi-select composer: cross-seed selections get "swap our outfits" style prompts.
@@ -668,7 +673,7 @@ export default function App() {
             />
           </Panel>
         )}
-        <div className={`toasts${selected.length > 1 || keyGate ? ' lifted' : ''}`}>
+        <div className={`toasts${selected.length > 1 || keyGate ? ' lifted' : ''}`} aria-live="polite">
           {notes.map((n) => (
             <div key={n.id} className={`pill ${n.kind}`}>
               <i>{n.kind === 'ok' ? '✓' : n.kind === 'error' ? '✕' : 'ℹ'}</i>
@@ -706,7 +711,7 @@ function KeyGate({ savedKey, onSave, onCancel }) {
         {savedKey
           ? <button className="go" autoFocus onClick={() => onSave(savedKey)}>Key saved — Generate</button>
           : <>
-            <input type="password" autoFocus placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
+            <input type="password" autoFocus aria-label="OpenRouter API key" placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
             <button className="go" disabled={!ok} onClick={() => onSave(key.trim())}>Save & generate</button>
           </>}
         <button onClick={onCancel} title="Keep the prompt, skip for now">Not now</button>

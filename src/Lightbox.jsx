@@ -23,11 +23,11 @@ export default function Lightbox({ node, onClose }) {
   for (let n = node; n; n = rf.getNode(n.data.parents[0])) trail.unshift(n.data.parents.length ? n.data.prompt : (n.data.name || 'seed'));
   const hold = { onPointerDown: (e) => { e.preventDefault(); setCompare(true); }, onPointerUp: () => setCompare(false), onPointerLeave: () => setCompare(false), onPointerCancel: () => setCompare(false) };
   return (
-    <dialog ref={ref} className="lightbox" onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
+    <dialog ref={ref} className="lightbox" aria-label={node ? (node.data.parents.length ? node.data.prompt : node.data.name || 'Seed photo') : 'Photo'} onClose={onClose} onClick={(e) => { if (e.target === ref.current) onClose(); }}>
       {node && (
         <figure>
           <nav className="crumbs" title={trail.join(' › ')}>{trail.map((t, i) => <span key={i} className={i === trail.length - 1 ? 'here' : ''}>{short(t)}</span>)}</nav>
-          <img src={src} alt="" />
+          <img src={src} alt={parent ? 'The photo this was made from' : (node.data.parents.length ? node.data.prompt : node.data.name || 'Seed photo')} />
           {parent && <div className="lb-badge">before</div>}
           <figcaption>
             <span>{node.data.parents.length ? node.data.prompt : (node.data.name || 'seed')}{node.data.hqUrl ? ' · HQ' : ''}</span>

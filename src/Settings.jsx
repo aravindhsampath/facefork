@@ -31,7 +31,7 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
   );
 
   return (
-    <aside className={`drawer${open ? ' open' : ''}`}>
+    <aside className={`drawer${open ? ' open' : ''}`} inert={!open} aria-label="Settings">
       <header><h2>Settings</h2><button onClick={onClose}>✕</button></header>
       <h3>Account</h3>
       <label>
