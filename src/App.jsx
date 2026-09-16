@@ -206,10 +206,14 @@ export default function App() {
 
   // ---- core generation: refs are data URLs; returns normalized blob + dims + cost ----
   const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial }) => {
-    if (!settingsRef.current.key) throw new Error('Add your OpenRouter API key first');
+    // Settings as they are now, not as they were when this closure was rendered: the key gate
+    // saves a key and generates in the same tick, before React has re-rendered anything.
+    const s = settingsRef.current;
+    if (!s.key) throw new Error('Add your OpenRouter API key first');
+    const model = s.models?.find((m) => m.id === s.model);
     if (model && refs.length > model.maxRefs) throw new Error(`${model.name} accepts at most ${model.maxRefs} reference image${model.maxRefs > 1 ? 's' : ''}`);
     const res = await generateImage({
-      key: settings.key, model: settings.model, images: refs,
+      key: s.key, model: s.model, images: refs,
       prompt: buildPrompt(prompt, refs.length, people),
       ratio: pickRatio(model?.ratios, ratioFrom.w, ratioFrom.h),
       resolution: snapResolution(model?.resolutions, tier),
@@ -219,7 +223,7 @@ export default function App() {
     });
     const { blob, w, h } = await normalize(await base64ToBlob(res), tier === '4K' ? 4096 : 2048);
     return { blob, w, h, cost: res.cost || 0 };
-  }, [settings, model]);
+  }, []);
 
   const addSeed = useCallback(async (file) => {
     if (!file) return;
@@ -299,16 +303,13 @@ export default function App() {
     }
   }, [rf, run, patch, settings.downloadRes]);
 
+  // Only a click spends: a key typed under ⚙ while the card waits turns its button into "Generate".
   const saveKeyAndGo = (key) => {
     settingsRef.current = { ...settingsRef.current, key };
-    updateSettings({ key });
+    if (key !== settings.key) updateSettings({ key });
     const g = keyGate; setKeyGate(null);
     if (g) generate(g.parentIds, g.prompt, g.reuseId);
   };
-  // A key typed into ⚙ while the card is waiting counts too: run the request, drop the card.
-  useEffect(() => {
-    if (keyGate && settings.key) { const g = keyGate; setKeyGate(null); generate(g.parentIds, g.prompt, g.reuseId); }
-  }, [settings.key]); // eslint-disable-line
 
   const hqDiffers = model?.resolutions?.length > 0 && snapResolution(model.resolutions, settings.exploreRes) !== snapResolution(model.resolutions, settings.downloadRes);
 
@@ -577,7 +578,7 @@ export default function App() {
         {tour && <Tour nodes={nodes} />}
         {keyGate && (
           <Panel position="bottom-center" className="keygate">
-            <KeyGate onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
+            <KeyGate savedKey={settings.key} onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
           </Panel>
         )}
         {narrow && !keyGate && selected.length === 1 && selected[0].data.status === 'ready' && (
@@ -629,15 +630,19 @@ export default function App() {
 }
 
 // Asked at the moment of intent: keeps the prompt, takes the key, continues.
-function KeyGate({ onSave, onCancel }) {
+function KeyGate({ savedKey, onSave, onCancel }) {
   const [key, setKey] = useState('');
   const ok = /^sk-or-/.test(key.trim()) || key.trim().length > 20;
   return (
     <div className="keygate-card">
-      <p><b>One thing first.</b> Edits run on your own OpenRouter key — about $0.02–0.10 per image, and the key never leaves this browser.</p>
+      <p><b>One thing first.</b> Edits run on your own OpenRouter key — about $0.02–0.10 per image. The key goes straight to OpenRouter and nowhere else; a dedicated key with a spending limit is a good idea.</p>
       <div className="row">
-        <input type="password" autoFocus placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
-        <button className="go" disabled={!ok} onClick={() => onSave(key.trim())}>Save & generate</button>
+        {savedKey
+          ? <button className="go" autoFocus onClick={() => onSave(savedKey)}>Key saved — Generate</button>
+          : <>
+            <input type="password" autoFocus placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
+            <button className="go" disabled={!ok} onClick={() => onSave(key.trim())}>Save & generate</button>
+          </>}
         <button onClick={onCancel} title="Keep the prompt, skip for now">Not now</button>
       </div>
       <small><a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get a key ↗</a> · also under ⚙ Settings</small>
