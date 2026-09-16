@@ -189,6 +189,8 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
 .pend button, .err button { background: var(--accent); color: #fff; border: none; border-radius: 8px; padding: 6px 14px; }
 .err { display: flex; flex-direction: column; gap: 10px; align-items: center; }
 .err button { background: var(--panel); color: var(--fg); border: 1px solid var(--border); }
+.err .row { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.err a { color: var(--accent); font-weight: 600; padding: 6px 4px; }
 .err button:hover { border-color: var(--accent); }
 
 .drop { position: fixed; inset: 12px; z-index: 30; border: 3px dashed var(--accent); border-radius: 16px; background: color-mix(in srgb, var(--accent) 12%, transparent);

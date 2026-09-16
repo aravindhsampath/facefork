@@ -13,7 +13,7 @@ function useElapsed(since, running) {
 }
 
 function PhotoNode({ id, data, selected }) {
-  const { selectedCount, compare, generate, remove, open, toggleStar, download, rerender, hq, combineHint, narrow, touch } = useContext(Ctx);
+  const { selectedCount, compare, generate, remove, open, toggleStar, download, rerender, hq, combineHint, openSettings, narrow, touch } = useContext(Ctx);
   const rf = useReactFlow();
   const ready = data.status === 'ready';
   const loading = data.status === 'loading';
@@ -31,7 +31,11 @@ function PhotoNode({ id, data, selected }) {
         {data.status === 'error' && (
           <div className="err" title={data.error}>
             <div>⚠ {data.error}</div>
-            <button className="nodrag" onClick={act(() => generate(data.parents, data.prompt, id))}>↻ Retry</button>
+            <div className="row">
+              {data.errorKind === 'key' && <button className="nodrag" onClick={act(openSettings)}>⚙ Fix key</button>}
+              {data.errorKind === 'credits' && <a className="nodrag" href="https://openrouter.ai/credits" target="_blank" rel="noreferrer" onClick={stop}>Add credits ↗</a>}
+              <button className="nodrag" onClick={act(() => generate(data.parents, data.prompt, id))}>↻ Retry</button>
+            </div>
           </div>
         )}
         {data.status === 'pending' && (

@@ -41,8 +41,10 @@ const toNode = (r) => ({
   id: r.id, type: 'photo', position: { x: 0, y: 0 },
   data: { ...r, url: r.blob ? URL.createObjectURL(r.blob) : null, hqUrl: r.hqBlob ? URL.createObjectURL(r.hqBlob) : null },
 });
-const toRecord = ({ id, data: { prompt, parents, blob, hqBlob, inline, w, h, status, error, cost, star, seed, name, demo } }) =>
-  ({ id, prompt, parents, blob, hqBlob, inline, w, h, status, error, cost, star, seed, name, demo });
+const toRecord = ({ id, data: { prompt, parents, blob, hqBlob, inline, w, h, status, error, errorKind, cost, star, seed, name, demo } }) =>
+  ({ id, prompt, parents, blob, hqBlob, inline, w, h, status, error, errorKind, cost, star, seed, name, demo });
+// A generation caught by a reload is saved as a retryable error rather than dropped: the prompt and parents survive.
+const interrupted = (r) => (r.status === 'loading' ? { ...r, status: 'error', error: 'Interrupted — the page was reloaded while this was generating', blob: undefined } : r);
 const photosOf = (nodes) => nodes.filter((n) => n.type === 'photo');
 const isImage = (f) => f?.type.startsWith('image/');
 const isTree = (f) => /\.(facefork|howdoilook)$/i.test(f?.name || '');
@@ -200,7 +202,7 @@ export default function App() {
   const structural = nodes.map((n) => n.id + n.data.status + (n.data.star ? '*' : '') + (n.data.hqBlob ? 'H' : '') + (n.data.cost ?? '')).join();
   useEffect(() => {
     if (!loaded.current) return;
-    const t = setTimeout(() => saveGraph(photosOf(nodes).filter((n) => n.data.status !== 'loading').map(toRecord)).catch((e) => {
+    const t = setTimeout(() => saveGraph(photosOf(nodes).map(toRecord).map(interrupted)).catch((e) => {
       console.error(e);
       notify('This browser isn’t keeping your tree between reloads. Export it from Settings to keep it.', { kind: 'error', ms: 12000, id: 'nosave' });
     }), 300);
@@ -210,7 +212,7 @@ export default function App() {
   useEffect(() => { document.title = generating ? `facefork · ${generating} generating…` : 'facefork'; }, [generating]);
 
   // ---- core generation: refs are data URLs; returns the model's bytes untouched + dims + cost ----
-  const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial }) => {
+  const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial, signal }) => {
     // Settings as they are now, not as they were when this closure was rendered: the key gate
     // saves a key and generates in the same tick, before React has re-rendered anything.
     const s = settingsRef.current;
@@ -225,6 +227,7 @@ export default function App() {
       seed: model?.seed ? seed : undefined,
       stream: !!model?.stream && !!onPartial,
       onPartial,
+      signal,
     });
     const blob = base64ToBlob(res);
     return { blob, ...(await dims(blob)), cost: res.cost || 0 };
@@ -251,6 +254,8 @@ export default function App() {
     for (const f of files) { if (isTree(f)) importFile(f); else if (isImage(f)) addSeed(f); }
   }, [addSeed, importFile]);
 
+  // In-flight generations by node id, so deleting a card (or leaving the page) stops waiting for it.
+  const jobs = useRef(new Map());
   // Generate a child of `parentIds`; with `reuseId` the existing (error/pending) node is re-rendered in place.
   const startGeneration = useCallback(async (parentIds, prompt, reuseId) => {
     const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
@@ -270,6 +275,8 @@ export default function App() {
       requestAnimationFrame(() => setGraph((cur) => cur, id));
       setLastAdded(id); setTimeout(() => setLastAdded((x) => (x === id ? null : x)), 1600);
     }
+    const ctl = new AbortController();
+    jobs.current.set(id, ctl);
     try {
       // Pre-encoded refs are cached on the node; older records get encoded once here.
       const refs = await Promise.all(parents.map(async (p) => {
@@ -278,13 +285,18 @@ export default function App() {
         return inline;
       }));
       const out = await run({
-        refs, prompt, people, ratioFrom: first, tier: settings.exploreRes, seed,
+        refs, prompt, people, ratioFrom: first, tier: settings.exploreRes, seed, signal: ctl.signal,
         onPartial: (url) => rf.updateNodeData(id, { url, ghost: false }),
       });
+      if (ctl.signal.aborted) return; // the card is gone; nothing to show it on
       patch(id, { status: 'ready', ghost: false, ...out, inline: await toInline(out.blob), url: URL.createObjectURL(out.blob) });
+      updateSettings({ spent: (settingsRef.current.spent || 0) + out.cost });
     } catch (e) {
+      if (ctl.signal.aborted) return;
       console.error(e);
-      patch(id, { status: 'error', ghost: false, url: null, error: e.message });
+      patch(id, { status: 'error', ghost: false, url: null, error: e.message, errorKind: e.kind });
+    } finally {
+      jobs.current.delete(id);
     }
   }, [rf, run, setGraph, setNodes, patch, settings.exploreRes, combineHint]);
   // Returns false when nothing started (no key yet: the request waits in the gate and the prompt box keeps its text).
@@ -313,6 +325,7 @@ export default function App() {
         const out = await run({ refs, prompt: n.data.prompt, people, ratioFrom: parents[0].data, tier: settingsRef.current.downloadRes, seed: n.data.seed });
         const cost = (rf.getNode(id)?.data.cost || 0) + out.cost;
         rf.updateNodeData(id, { hqBusy: false, hqBlob: out.blob, hqUrl: URL.createObjectURL(out.blob), cost });
+        updateSettings({ spent: (settingsRef.current.spent || 0) + out.cost });
       } catch (e) {
         rf.updateNodeData(id, { hqBusy: false });
         throw e;
@@ -376,7 +389,9 @@ export default function App() {
   const removeMany = useCallback((ids) => {
     const cur = rf.getNodes();
     const gone = subtree(photosOf(cur), ids);
-    const removed = cur.filter((n) => gone.has(n.id));
+    // Stop waiting on anything deleted mid-generation; an undo brings it back as a retryable card.
+    for (const id of gone) jobs.current.get(id)?.abort();
+    const removed = cur.filter((n) => gone.has(n.id)).map((n) => (n.data.status === 'loading' ? { ...n, data: { ...n.data, status: 'error', ghost: false, url: null, error: 'Cancelled' } } : n));
     setGraph((now) => now.filter((n) => !gone.has(n.id)));
     const id = crypto.randomUUID();
     const timer = setTimeout(() => {
@@ -479,8 +494,9 @@ export default function App() {
   const pickFile = useCallback(() => fileRef.current.click(), []);
   // hq: whether a higher-resolution re-render is on offer, at what tier and rough price.
   const hq = useMemo(() => ({ differs: hqDiffers, res: settings.downloadRes, price: avgCost * 1.5 }), [hqDiffers, settings.downloadRes, avgCost]);
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, narrow, touch }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, narrow, touch]);
+  const openSettings = useCallback(() => setDrawer(true), []);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, openSettings, narrow, touch }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, openSettings, narrow, touch]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
   const soloId = selected.length === 1 ? selected[0].id : null;
   useEffect(() => {
