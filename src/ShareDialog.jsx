@@ -62,7 +62,7 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
     return () => { live = false; };
   }, [open, nodes, subject, model]);
 
-  useEffect(() => { setResult(null); }, [pick, JSON.stringify(raw), subject, imgType, scale, vid]);
+  useEffect(() => { setResult(null); }, [tree, pick, JSON.stringify(raw), subject, imgType, scale, vid]); // a finished image invalidates an old file too
   useEffect(() => { setArmed(null); }, [pick]);
   // Suggested caption follows the photo until the user edits it.
   useEffect(() => { if (tree && !textTouched) setText(caption(tree, nodeOr(tree, opts.after ?? opts.photo, tree.focus))); }, [tree, opts.after, opts.photo, textTouched]);
@@ -72,10 +72,21 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   const scene = useMemo(() => { setWordmark(opts.mark !== false); return tree && fmt.kind === 'still' && !blocked ? fmt.build(tree, opts) : null; }, [tree, fmt, opts, blocked]);
   const spec = useMemo(() => { setWordmark(opts.mark !== false); return tree && fmt.kind === 'motion' && !blocked ? fmt.spec(tree, opts) : null; }, [tree, fmt, opts, blocked]);
 
+  // The stage's size, observed so the preview is redrawn when the dialog is resized or the phone rotates.
+  const [stageBox, setStageBox] = useState(0);
+  useEffect(() => {
+    const el = preview.current?.parentElement;
+    if (!open || !el) return;
+    const ro = new ResizeObserver(([e]) => setStageBox(Math.round(e.contentRect.width) * 10000 + Math.round(e.contentRect.height)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [open, blocked, fmt.kind]);
+
   // ---- live preview: stills render once, motion plays the same frame() the encoder will ----
+  // Only while the dialog is open: a closed dialog stays mounted, and its clip must not keep animating.
   useEffect(() => {
     const cv = preview.current;
-    if (!cv || (!scene && !spec)) return;
+    if (!open || !cv || (!scene && !spec)) return;
     const box = cv.parentElement.getBoundingClientRect();
     const src = scene || spec;
     const s = Math.min((box.width - 24) / src.w, (box.height - 24) / src.h);
@@ -83,6 +94,7 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
     cv.style.height = `${Math.round(src.h * s)}px`;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     if (scene) { render(scene, s * dpr, cv); return; }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) { render({ w: spec.w, h: spec.h, bg: spec.bg, ops: spec.frame(spec.duration / 2) }, s * dpr, cv); return; }
     let raf, t0 = performance.now();
     const loop = (now) => {
       const time = ((now - t0) / 1000) % spec.duration;
@@ -91,7 +103,7 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [scene, spec]);
+  }, [open, scene, spec, stageBox]);
 
   const produce = useCallback(async () => {
     if (!tree || blocked) return null;
@@ -169,9 +181,9 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   const onFilm = (id) => { if (armed) { setOpt(armed, id); setArmed(null); } else setSubject(id); };
 
   return (
-    <dialog ref={ref} className="sharebox" onClose={onClose} onCancel={() => abort.current?.abort()}>
+    <dialog ref={ref} className="sharebox" aria-labelledby="sb-title" onClose={onClose} onCancel={() => abort.current?.abort()}>
       <div className="sb-head">
-        <h2>Share</h2>
+        <h2 id="sb-title">Share</h2>
         <div className={`sb-film${armed ? ' armed' : ''}`}>
           {armed && <span className="sb-arm">Click a photo to set <b>{pickOpts.find((o) => o.id === armed)?.label}</b></span>}
           {tree?.nodes.map((n) => {
@@ -184,7 +196,7 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
             );
           })}
         </div>
-        <button className="sb-x" onClick={onClose} title="Close">✕</button>
+        <button className="sb-x" onClick={() => { abort.current?.abort(); onClose(); }} title="Close">✕</button>
       </div>
 
       <div className="sb-body">
@@ -261,8 +273,8 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
             <button className={copied === 'caption' ? 'copied' : ''} onClick={() => { navigator.clipboard.writeText(text).then(() => { flashCopied('caption'); onToast?.('Caption copied'); }, (e) => onToast?.(`Copy failed: ${e.message}`)); }} title="Copy the caption text to paste into a post">{copied === 'caption' ? '✓ Copied' : '⧉ Copy caption'}</button>
           </div>
           <p className="sb-fine">{SHARE_FILES
-            ? 'Share… hands the actual file to Messages, WhatsApp, Instagram, X and friends through your device’s share sheet. No website can post an image into those apps by link — their share links carry only text — so that sheet, or Download / Copy and attach, is the honest route. Nothing is uploaded until you post it.'
-            : 'This browser can’t hand files to other apps (Safari, Chrome and Edge can): Download or Copy the image and attach it in the app. No website can post an image into WhatsApp, Instagram or X by link — their share links carry only text. Nothing is uploaded until you post it.'}</p>
+            ? 'The file is made here and handed to the app you pick through your device’s share sheet — the only way a website can give an image to WhatsApp, Instagram or X.'
+            : 'The file is made here; this browser can’t hand files to other apps, so save or copy it and attach it in the app.'}</p>
         </aside>
       </div>
     </dialog>

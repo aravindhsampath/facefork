@@ -11,7 +11,8 @@ async function drawScaled(blob, max) {
   return { canvas, w, h };
 }
 
-// Normalise any uploaded/generated image to a JPEG ≤ max px for storage. Returns {blob, w, h}.
+// Uploads are re-encoded as JPEG ≤ max px: bounded storage, and EXIF (location, device) stripped
+// before the bytes go anywhere. Returns {blob, w, h}.
 export async function normalize(blob, max = 2048) {
   const { canvas, w, h } = await drawScaled(blob, max);
   return { blob: await canvas.convertToBlob({ type: 'image/jpeg', quality: 0.9 }), w, h };
@@ -29,7 +30,20 @@ export async function toInline(blob, max = 1024) {
   });
 }
 
-export const base64ToBlob = ({ mime, data }) => fetch(`data:${mime};base64,${data}`).then((r) => r.blob());
+// Pixel size without re-encoding: generated images are stored exactly as the model returned them.
+export async function dims(blob) {
+  const bmp = await createImageBitmap(blob);
+  const d = { w: bmp.width, h: bmp.height };
+  bmp.close();
+  return d;
+}
+
+export function base64ToBlob({ mime, data }) {
+  const bin = atob(data);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
 
 export const extOf = (blob) => ({ 'image/webp': 'webp', 'image/png': 'png', 'image/gif': 'gif', 'video/mp4': 'mp4', 'text/html': 'html', 'application/zip': 'facefork' }[blob?.type] || 'jpg');
 

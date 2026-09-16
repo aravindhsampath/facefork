@@ -7,9 +7,11 @@ new node under the photo you asked it of. Select two photos — even of differen
 combine them. Star the keepers, compare any node with its parent, export the tree, or turn it into
 something postable (before/after, polaroid, magazine cover, a looping clip, …).
 
-Everything runs in your browser. Images go straight from your machine to the model on
-**your own [OpenRouter](https://openrouter.ai) key** — nothing is uploaded to us, and there is
-no backend at all.
+Everything runs in your browser on **your own [OpenRouter](https://openrouter.ai) key**. Photos
+stay in the browser until you ask for an edit; then the prompt and the reference photos go
+directly to OpenRouter and the model provider you chose. facefork.com is a static site — its server
+never receives your photos or your key, and a `Content-Security-Policy` header forbids the page
+from connecting anywhere but OpenRouter. No analytics, no backend.
 
 ## Run it
 

@@ -28,14 +28,14 @@ export async function loadGraph() {
   const hs = [...new Set(recs.flatMap((r) => [r.hash, r.hqHash].filter(Boolean)))];
   const blobs = await getMany(hs.map((h) => `blob:${h}`));
   const byHash = new Map(hs.map((h, i) => [h, thaw(blobs[i])]));
-  hs.forEach((h) => known.add(h));
+  hs.forEach((h) => byHash.get(h) && known.add(h)); // only what is really there counts as stored
   const seen = new Set();
   return recs
     .filter((r) => !seen.has(r.id) && seen.add(r.id))
     .map(({ hash, hqHash, ...r }) => {
-      const blob = byHash.get(hash) ?? r.blob;
+      const blob = byHash.get(hash) ?? thaw(r.blob); // pre-hash records carried the blob inline
       const missing = r.status === 'ready' && !blob;
-      return { ...r, blob, hqBlob: byHash.get(hqHash), ...(missing && { status: 'error', error: 'Image data missing' }) };
+      return { ...r, blob, hqBlob: byHash.get(hqHash) ?? thaw(r.hqBlob), ...(missing && { status: 'error', error: 'Image data missing' }) };
     });
 }
 
@@ -46,16 +46,17 @@ export const saveGraph = (records) => { const p = queue.then(() => doSave(record
 
 async function doSave(records) {
   const out = [];
-  const fresh = [];
+  const fresh = new Map(); // hash -> stored value; becomes `known` only once the write has succeeded
   const put = async (blob) => {
     if (!blob) return undefined;
     const bytes = hashes.has(blob) ? undefined : await blob.arrayBuffer();
     const h = await hashOf(blob, bytes);
-    if (!known.has(h)) { fresh.push([`blob:${h}`, { type: blob.type, bytes: bytes ?? await blob.arrayBuffer() }]); known.add(h); }
+    if (!known.has(h) && !fresh.has(h)) fresh.set(h, { type: blob.type, bytes: bytes ?? await blob.arrayBuffer() });
     return h;
   };
   for (const { blob, hqBlob, ...rest } of records) out.push({ ...rest, hash: await put(blob), hqHash: await put(hqBlob) });
-  if (fresh.length) await setMany(fresh);
+  if (fresh.size) await setMany([...fresh].map(([h, v]) => [`blob:${h}`, v]));
+  fresh.forEach((_, h) => known.add(h));
   await set(KEY, out);
   await del(OLD_KEY);
   const live = new Set(out.flatMap((r) => [r.hash, r.hqHash].filter(Boolean)));

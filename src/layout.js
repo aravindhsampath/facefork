@@ -31,24 +31,25 @@ export function layout(nodes) {
   for (const n of photos) if (!n.data.parents.length) g.setEdge('__root', n.id, { weight: 4 });
   if (adder) g.setEdge('__root', adder.id, { weight: 4 });
   dagre.layout(g);
-  let minX = Infinity, minY = Infinity;
   const laid = photos.map((n) => {
     const { x, y } = g.node(n.id);
     const height = nodeHeight(n.data);
-    const position = { x: x - NODE_W / 2, y: y - height / 2 };
-    minX = Math.min(minX, position.x); minY = Math.min(minY, position.y);
-    return { ...n, width: NODE_W, height, position };
+    return { ...n, width: NODE_W, height, position: { x: x - NODE_W / 2, y: y - height / 2 } };
   });
   if (adder) {
     const { x, y } = g.node(adder.id);
-    const position = { x: x - NODE_W / 2, y: y - ADDER_H / 2 };
-    minX = Math.min(minX, position.x); minY = Math.min(minY, position.y);
-    laid.push({ ...adder, width: NODE_W, height: ADDER_H, position });
+    laid.push({ ...adder, width: NODE_W, height: ADDER_H, position: { x: x - NODE_W / 2, y: y - ADDER_H / 2 } });
   }
   const film = nodes.find((n) => n.type === 'filmstrip');
-  if (film) laid.push(film.data.pinned ? film : { ...film, position: { x: minX - FILM_W - 80, y: minY } });
+  if (film) laid.push(film.data.pinned ? film : { ...film, position: filmPosition(laid) });
   return laid;
 }
+
+// Where the filmstrip sits: left of everything, level with the top row.
+export const filmPosition = (laid) => ({
+  x: Math.min(...laid.map((n) => n.position.x)) - FILM_W - 80,
+  y: Math.min(...laid.map((n) => n.position.y)),
+});
 
 // One faint backdrop per connected group of photos (a seed and everything grown from it; two
 // seeds that were merged share one plate), named after the seeds inside it. Derived from the

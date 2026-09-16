@@ -1,23 +1,24 @@
 import { useState } from 'react';
 
-export default function PromptBox({ onSubmit, chips = [], placeholder = 'What if I had a mustache?', autoFocus = true, hint = '' }) {
-  const [text, setText] = useState('');
+// onSubmit returning false means nothing started (e.g. the key gate opened): the text stays put.
+export default function PromptBox({ onSubmit, chips = [], placeholder = 'What if I had a mustache?', autoFocus = true, hint = '', initial = '' }) {
+  const [text, setText] = useState(initial);
   const submit = (t = text) => {
     t = t.trim();
     if (!t) return;
-    onSubmit(t);
-    setText('');
+    if (onSubmit(t) !== false) setText('');
   };
   return (
     <div className="prompt nodrag nopan nowheel">
       <div className="row">
         <textarea
           rows={2}
+          aria-label="What if…"
           value={text}
           autoFocus={autoFocus}
           placeholder={placeholder}
           onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } }}
+          onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit(); } }}
         />
         <button onClick={() => submit()} disabled={!text.trim()} title="Generate (Enter)">➤</button>
       </div>

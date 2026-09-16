@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useReactFlow } from '@xyflow/react';
 import { Ctx } from './ctx.js';
 import PhotoNode from './PhotoNode.jsx';
@@ -10,11 +10,14 @@ import PromptEdge from './PromptEdge.jsx';
 import PromptBox from './PromptBox.jsx';
 import Lightbox from './Lightbox.jsx';
 import Settings from './Settings.jsx';
-import ShareDialog from './ShareDialog.jsx';
+// The share studio (formats, renderer, tree builder) is most of the bundle and only needed once
+// there is something to share, so it loads on first open — or a moment early, on hover/focus.
+const loadShare = () => import('./ShareDialog.jsx');
+const ShareDialog = lazy(loadShare);
 import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
-import { layout, plates, edgesOf, nodeHeight, NODE_W } from './layout.js';
-import { normalize, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
-import { generateImage, buildPrompt, pickRatio, snapResolution } from './api.js';
+import { layout, plates, edgesOf, nodeHeight, filmPosition, NODE_W } from './layout.js';
+import { normalize, dims, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
+import { generateImage, listModels, buildPrompt, pickRatio, snapResolution } from './api.js';
 import { loadGraph, saveGraph, loadSettings, saveSettings } from './store.js';
 import { exportTree, importTree } from './share.js';
 import { demoRecords } from './demo.js';
@@ -36,13 +39,17 @@ function useMedia(q) {
 const COMBINED = 'howdoilook.combined';
 const MAP_KEY = 'howdoilook.minimap';
 const TOUR_SEEN = 'howdoilook.tourSeen';
+// Camera moves respect prefers-reduced-motion (CSS can't reach a setViewport animation).
+const DUR = (ms) => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : ms);
 
 const toNode = (r) => ({
   id: r.id, type: 'photo', position: { x: 0, y: 0 },
   data: { ...r, url: r.blob ? URL.createObjectURL(r.blob) : null, hqUrl: r.hqBlob ? URL.createObjectURL(r.hqBlob) : null },
 });
-const toRecord = ({ id, data: { prompt, parents, blob, hqBlob, inline, w, h, status, error, cost, star, seed, name, demo } }) =>
-  ({ id, prompt, parents, blob, hqBlob, inline, w, h, status, error, cost, star, seed, name, demo });
+const toRecord = ({ id, data: { prompt, parents, blob, hqBlob, inline, w, h, status, error, errorKind, cost, star, seed, name, demo } }) =>
+  ({ id, prompt, parents, blob, hqBlob, inline, w, h, status, error, errorKind, cost, star, seed, name, demo });
+// A generation caught by a reload is saved as a retryable error rather than dropped: the prompt and parents survive.
+const interrupted = (r) => (r.status === 'loading' ? { ...r, status: 'error', error: 'Interrupted — the page was reloaded while this was generating', blob: undefined } : r);
 const photosOf = (nodes) => nodes.filter((n) => n.type === 'photo');
 const isImage = (f) => f?.type.startsWith('image/');
 const isTree = (f) => /\.(facefork|howdoilook)$/i.test(f?.name || '');
@@ -91,9 +98,11 @@ export default function App() {
   const [settings, setSettings] = useState(() => ({ ...DEFAULTS, ...loadSettings() }));
   const settingsRef = useRef(settings); settingsRef.current = settings;
   const [keyGate, setKeyGate] = useState(null); // {parentIds, prompt, reuseId} waiting for an API key
+  const [draft, setDraft] = useState(''); // prompt handed back to the composer when the gate is dismissed
   const [drawer, setDrawer] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const shareSeen = useRef(false); if (shareOpen) shareSeen.current = true; // stays mounted after the first open so its picks survive closing
   const [notes, setNotes] = useState([]); // stacked status pills: {id, kind, text, action}
   const [lastAdded, setLastAdded] = useState(null); // newest node id — its parent edge pulses briefly
   const [compare, setCompare] = useState(false);
@@ -129,7 +138,6 @@ export default function App() {
   const edges = useMemo(() => edgesOf(nodes).map((e) => (e.target === lastAdded ? { ...e, className: 'pulse' } : e)), [nodes, lastAdded]);
   const selected = useMemo(() => nodes.filter((n) => n.selected && n.type === 'photo'), [nodes]);
   const favourites = useMemo(() => photosOf(nodes).filter((n) => n.data.star && n.data.status === 'ready').map((n) => ({ id: n.id, url: n.data.url, prompt: n.data.prompt })), [nodes]);
-  const total = useMemo(() => nodes.reduce((s, n) => s + (n.data.cost || 0), 0), [nodes]);
   const generating = useMemo(() => nodes.filter((n) => n.data.status === 'loading' || n.data.hqBusy).length, [nodes]);
   const edits = useMemo(() => photosOf(nodes).filter((n) => n.data.status === 'ready' && n.data.parents.length), [nodes]);
   const hqPending = useMemo(() => edits.filter((n) => !n.data.hqBlob).length, [edits]);
@@ -142,16 +150,28 @@ export default function App() {
     setNodes((cur) => {
       const laid = layout(withFilm(typeof next === 'function' ? next(cur) : next));
       const n = focusId && laid.find((x) => x.id === focusId);
-      if (n) requestAnimationFrame(() => rf.setCenter(n.position.x + NODE_W / 2, n.position.y + n.height / 2, { zoom: rf.getZoom(), duration: 300 }));
+      if (n) requestAnimationFrame(() => rf.setCenter(n.position.x + NODE_W / 2, n.position.y + n.height / 2, { zoom: rf.getZoom(), duration: DUR(300) }));
       return laid;
     });
   }, [rf, setNodes]);
   // Fit from the sizes we already know (layout sets width/height on every node), so it works
   // before React Flow has measured anything — e.g. in a background tab, where measurement stalls.
-  const fitAll = useCallback((padding = 0.2, duration = 300) => {
+  const fitAll = useCallback((padding = 0.2, duration = DUR(300)) => {
     const ns = rf.getNodes().filter((n) => n.type !== 'plate' && n.width && n.height);
     const box = document.querySelector('.react-flow')?.getBoundingClientRect();
     if (!ns.length || !box) return;
+    // A phone can't show a whole tree legibly: land on the first seed (the visitor's own before the
+    // demo's) at a readable size, with its first branches peeking in below. ⛶ still fits everything.
+    if (window.matchMedia(NARROW).matches) {
+      const seeds = ns.filter((n) => n.type === 'photo' && !n.data.parents.length);
+      const seed = seeds.find((n) => !n.data.demo) || seeds[0];
+      if (seed) {
+        const zoom = Math.min(1, Math.max(0.5, (box.width * 0.62) / NODE_W));
+        const top = (document.querySelector('.top')?.getBoundingClientRect().bottom ?? box.top) - box.top + 16; // just under the header
+        rf.setViewport({ x: box.width / 2 - (seed.position.x + NODE_W / 2) * zoom, y: top - seed.position.y * zoom, zoom }, { duration });
+        return;
+      }
+    }
     const x0 = Math.min(...ns.map((n) => n.position.x)), y0 = Math.min(...ns.map((n) => n.position.y));
     const x1 = Math.max(...ns.map((n) => n.position.x + n.width)), y1 = Math.max(...ns.map((n) => n.position.y + n.height));
     const bw = x1 - x0, bh = y1 - y0;
@@ -160,6 +180,17 @@ export default function App() {
   }, [rf]);
   const patch = useCallback((id, data) =>
     setGraph((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n))), [setGraph]);
+  // Metadata-only updates (star, cost, HQ): no dagre pass, so nothing the user dragged moves. The
+  // filmstrip still comes and goes with the first/last star, placed from the current positions.
+  const setMeta = useCallback((fn) => setNodes((cur) => {
+    const next = fn(cur);
+    const photos = photosOf(next);
+    const out = [...photos];
+    if (photos.some((n) => n.data.star)) out.push(next.find((n) => n.type === 'filmstrip') || { ...FILM, position: filmPosition(photos) });
+    const adder = next.find((n) => n.type === 'adder');
+    if (adder) out.push(adder);
+    return out;
+  }), [setNodes]);
   // Merge records into the canvas (ids already present are skipped), or replace it entirely.
   const addRecords = useCallback((recs, { replace = false } = {}) => {
     setGraph((cur) => {
@@ -184,18 +215,24 @@ export default function App() {
     // Nothing stored yet (or storage unreadable) means a first visit: bring the demo. An emptied
     // canvas is stored as [] and stays empty. No separate "seen" flag, so a browser that cannot
     // keep the tree between reloads gets the demo again rather than a blank page.
-    loadGraph().catch(() => undefined).then(async (recs) => {
+    loadGraph().then(async (recs) => {
       if (recs?.length) addRecords(recs, { replace: true });
+      // Trees saved before the running total existed: start it from what those images cost.
+      if (settingsRef.current.spent == null && recs?.length) updateSettings({ spent: recs.reduce((s, r) => s + (r.cost || 0), 0) });
       else if (!recs) {
         try { addRecords(await demoRecords()); if (!localStorage.getItem(TOUR_SEEN)) setTour(true); } catch { /* offline: empty canvas */ }
       }
       loaded.current = true;
+    }, (e) => {
+      // Unreadable is not the same as empty: keep autosave off so nothing overwrites what may still be recoverable.
+      console.error(e);
+      notify('Couldn’t read the tree saved in this browser. Reload to try again; nothing has been overwritten.', { kind: 'error', ms: 0, id: 'noload' });
     });
   }, []); // eslint-disable-line
   const structural = nodes.map((n) => n.id + n.data.status + (n.data.star ? '*' : '') + (n.data.hqBlob ? 'H' : '') + (n.data.cost ?? '')).join();
   useEffect(() => {
     if (!loaded.current) return;
-    const t = setTimeout(() => saveGraph(photosOf(nodes).filter((n) => n.data.status !== 'loading').map(toRecord)).catch((e) => {
+    const t = setTimeout(() => saveGraph(photosOf(nodes).map(toRecord).map(interrupted)).catch((e) => {
       console.error(e);
       notify('This browser isn’t keeping your tree between reloads. Export it from Settings to keep it.', { kind: 'error', ms: 12000, id: 'nosave' });
     }), 300);
@@ -204,22 +241,27 @@ export default function App() {
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);
   useEffect(() => { document.title = generating ? `facefork · ${generating} generating…` : 'facefork'; }, [generating]);
 
-  // ---- core generation: refs are data URLs; returns normalized blob + dims + cost ----
-  const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial }) => {
-    if (!settingsRef.current.key) throw new Error('Add your OpenRouter API key first');
+  // ---- core generation: refs are data URLs; returns the model's bytes untouched + dims + cost ----
+  const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial, signal }) => {
+    // Settings as they are now, not as they were when this closure was rendered: the key gate
+    // saves a key and generates in the same tick, before React has re-rendered anything.
+    const s = settingsRef.current;
+    if (!s.key) throw new Error('Add your OpenRouter API key first');
+    const model = s.models?.find((m) => m.id === s.model);
     if (model && refs.length > model.maxRefs) throw new Error(`${model.name} accepts at most ${model.maxRefs} reference image${model.maxRefs > 1 ? 's' : ''}`);
     const res = await generateImage({
-      key: settings.key, model: settings.model, images: refs,
+      key: s.key, model: s.model, images: refs,
       prompt: buildPrompt(prompt, refs.length, people),
       ratio: pickRatio(model?.ratios, ratioFrom.w, ratioFrom.h),
       resolution: snapResolution(model?.resolutions, tier),
       seed: model?.seed ? seed : undefined,
       stream: !!model?.stream && !!onPartial,
       onPartial,
+      signal,
     });
-    const { blob, w, h } = await normalize(await base64ToBlob(res), tier === '4K' ? 4096 : 2048);
-    return { blob, w, h, cost: res.cost || 0 };
-  }, [settings, model]);
+    const blob = base64ToBlob(res);
+    return { blob, ...(await dims(blob)), cost: res.cost || 0 };
+  }, []);
 
   const addSeed = useCallback(async (file) => {
     if (!file) return;
@@ -242,10 +284,10 @@ export default function App() {
     for (const f of files) { if (isTree(f)) importFile(f); else if (isImage(f)) addSeed(f); }
   }, [addSeed, importFile]);
 
+  // In-flight generations by node id, so deleting a card (or leaving the page) stops waiting for it.
+  const jobs = useRef(new Map());
   // Generate a child of `parentIds`; with `reuseId` the existing (error/pending) node is re-rendered in place.
-  const generate = useCallback(async (parentIds, prompt, reuseId) => {
-    // Soft gate: no key yet → keep the request and ask for the key right here, then continue.
-    if (!settingsRef.current.key) return setKeyGate({ parentIds, prompt, reuseId });
+  const startGeneration = useCallback(async (parentIds, prompt, reuseId) => {
     const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
     const parents = parentIds.map((id) => byId.get(id)).filter((n) => n?.data.status === 'ready');
     if (!parents.length) return flash('Parent image is not ready yet');
@@ -263,7 +305,14 @@ export default function App() {
       requestAnimationFrame(() => setGraph((cur) => cur, id));
       setLastAdded(id); setTimeout(() => setLastAdded((x) => (x === id ? null : x)), 1600);
     }
+    const ctl = new AbortController();
+    jobs.current.set(id, ctl);
     try {
+      // The catalog is fetched on first intent, not on page load: without it the resolution and
+      // reference-count checks (and the ↑ re-render offer) would silently not apply.
+      if (!settingsRef.current.models?.length) {
+        try { const models = await listModels(); settingsRef.current = { ...settingsRef.current, models }; updateSettings({ models }); } catch { /* generate anyway; the drawer can retry */ }
+      }
       // Pre-encoded refs are cached on the node; older records get encoded once here.
       const refs = await Promise.all(parents.map(async (p) => {
         const inline = p.data.inline || await toInline(p.data.blob);
@@ -271,56 +320,72 @@ export default function App() {
         return inline;
       }));
       const out = await run({
-        refs, prompt, people, ratioFrom: first, tier: settings.exploreRes, seed,
+        refs, prompt, people, ratioFrom: first, tier: settings.exploreRes, seed, signal: ctl.signal,
         onPartial: (url) => rf.updateNodeData(id, { url, ghost: false }),
       });
+      if (ctl.signal.aborted) return; // the card is gone; nothing to show it on
       patch(id, { status: 'ready', ghost: false, ...out, inline: await toInline(out.blob), url: URL.createObjectURL(out.blob) });
+      updateSettings({ spent: (settingsRef.current.spent || 0) + out.cost });
     } catch (e) {
+      if (ctl.signal.aborted) return;
       console.error(e);
-      patch(id, { status: 'error', ghost: false, url: null, error: e.message });
+      patch(id, { status: 'error', ghost: false, url: null, error: e.message, errorKind: e.kind });
+    } finally {
+      jobs.current.delete(id);
     }
   }, [rf, run, setGraph, setNodes, patch, settings.exploreRes, combineHint]);
+  // Returns false when nothing started (no key yet: the request waits in the gate and the prompt box keeps its text).
+  const generate = useCallback((parentIds, prompt, reuseId) => {
+    if (!settingsRef.current.key) { setKeyGate({ parentIds, prompt, reuseId }); return false; }
+    setDraft('');
+    startGeneration(parentIds, prompt, reuseId);
+    return true;
+  }, [startGeneration]);
 
-  // Re-render one node at download resolution from its parents' best images (same seed where supported).
-  const makeHQ = useCallback(async (id) => {
-    const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
-    const n = byId.get(id);
-    if (!n || !n.data.parents.length || n.data.hqBlob) return;
-    const parents = n.data.parents.map((p) => byId.get(p)).filter(Boolean);
-    const people = new Set(parents.map((p) => rootOf(byId, p.id))).size;
-    rf.updateNodeData(id, { hqBusy: true });
-    try {
-      const refs = await Promise.all(parents.map((p) => toInline(p.data.hqBlob || p.data.blob, 2048)));
-      const out = await run({ refs, prompt: n.data.prompt, people, ratioFrom: parents[0].data, tier: settings.downloadRes, seed: n.data.seed });
-      patch(id, { hqBusy: false, hqBlob: out.blob, hqUrl: URL.createObjectURL(out.blob), cost: (n.data.cost || 0) + out.cost });
-    } catch (e) {
-      rf.updateNodeData(id, { hqBusy: false });
-      throw e;
-    }
-  }, [rf, run, patch, settings.downloadRes]);
+  // Re-render one node at download resolution from its parents' best images. This is a fresh
+  // generation (same seed where the model supports it), so the picture can change; it is never
+  // implied by Download. One in-flight job per node: a second click joins the first.
+  const hqJobs = useRef(new Map());
+  const rerender = useCallback((id) => {
+    if (hqJobs.current.has(id)) return hqJobs.current.get(id);
+    const job = (async () => {
+      const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
+      const n = byId.get(id);
+      if (!n || !n.data.parents.length || n.data.hqBlob) return;
+      const parents = n.data.parents.map((p) => byId.get(p)).filter(Boolean);
+      const people = new Set(parents.map((p) => rootOf(byId, p.id))).size;
+      rf.updateNodeData(id, { hqBusy: true });
+      try {
+        const refs = await Promise.all(parents.map((p) => toInline(p.data.hqBlob || p.data.blob, 2048)));
+        const out = await run({ refs, prompt: n.data.prompt, people, ratioFrom: parents[0].data, tier: settingsRef.current.downloadRes, seed: n.data.seed });
+        const cost = (rf.getNode(id)?.data.cost || 0) + out.cost;
+        rf.updateNodeData(id, { hqBusy: false, hqBlob: out.blob, hqUrl: URL.createObjectURL(out.blob), cost });
+        updateSettings({ spent: (settingsRef.current.spent || 0) + out.cost });
+      } catch (e) {
+        rf.updateNodeData(id, { hqBusy: false });
+        throw e;
+      }
+    })().finally(() => hqJobs.current.delete(id));
+    hqJobs.current.set(id, job);
+    return job;
+  }, [rf, run]);
 
+  // Only a click spends: a key typed under ⚙ while the card waits turns its button into "Generate".
   const saveKeyAndGo = (key) => {
     settingsRef.current = { ...settingsRef.current, key };
-    updateSettings({ key });
+    if (key !== settings.key) updateSettings({ key });
     const g = keyGate; setKeyGate(null);
     if (g) generate(g.parentIds, g.prompt, g.reuseId);
   };
-  // A key typed into ⚙ while the card is waiting counts too: run the request, drop the card.
-  useEffect(() => {
-    if (keyGate && settings.key) { const g = keyGate; setKeyGate(null); generate(g.parentIds, g.prompt, g.reuseId); }
-  }, [settings.key]); // eslint-disable-line
 
   const hqDiffers = model?.resolutions?.length > 0 && snapResolution(model.resolutions, settings.exploreRes) !== snapResolution(model.resolutions, settings.downloadRes);
 
-  const download = useCallback(async (id) => {
-    let n = rf.getNode(id);
-    if (n.data.parents.length && !n.data.hqBlob && hqDiffers) {
-      try { await makeHQ(id); } catch (e) { notify(`HQ render failed: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => download(id) } }); }
-      n = rf.getNode(id);
-    }
+  // Saves exactly what is on the card (the HQ version if one was made): no request, no charge.
+  const download = useCallback((id) => {
+    const n = rf.getNode(id);
     const out = n.data.hqBlob || n.data.blob;
     downloadBlob(out, `facefork-${id.slice(0, 8)}${n.data.hqBlob ? '-hq' : ''}.${extOf(out)}`);
-  }, [rf, makeHQ, hqDiffers]);
+  }, [rf]);
 
   // Walk the whole tree seed→leaves, re-rendering each node in HQ from HQ parents.
   const reprocessAll = useCallback(async () => {
@@ -331,10 +396,10 @@ export default function App() {
     let i = 0;
     for (const n of todo) {
       notify(`Re-rendering ${++i} of ${todo.length}…`, { ms: 0, id: 'hq-progress' });
-      try { await makeHQ(n.id); } catch (e) { notify(`HQ failed on “${n.data.prompt}”: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => reprocessAll() } }); return; }
+      try { await rerender(n.id); } catch (e) { notify(`HQ failed on “${n.data.prompt}”: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => reprocessAll() } }); return; }
     }
     notify('Every image re-rendered ✓', { kind: 'ok', id: 'hq-progress' });
-  }, [rf, makeHQ, hqDiffers, settings.downloadRes]);
+  }, [rf, rerender, hqDiffers, settings.downloadRes]);
 
   const exportAll = useCallback(async () => {
     const recs = photosOf(rf.getNodes()).filter((n) => n.data.status !== 'loading').map(toRecord);
@@ -359,7 +424,9 @@ export default function App() {
   const removeMany = useCallback((ids) => {
     const cur = rf.getNodes();
     const gone = subtree(photosOf(cur), ids);
-    const removed = cur.filter((n) => gone.has(n.id));
+    // Stop waiting on anything deleted mid-generation; an undo brings it back as a retryable card.
+    for (const id of gone) jobs.current.get(id)?.abort();
+    const removed = cur.filter((n) => gone.has(n.id)).map((n) => (n.data.status === 'loading' ? { ...n, data: { ...n.data, status: 'error', ghost: false, url: null, error: 'Cancelled' } } : n));
     setGraph((now) => now.filter((n) => !gone.has(n.id)));
     const id = crypto.randomUUID();
     const timer = setTimeout(() => {
@@ -376,7 +443,7 @@ export default function App() {
   const clearDemo = useCallback(() => { const ids = photosOf(rf.getNodes()).filter((n) => n.data.demo).map((n) => n.id); if (ids.length) removeMany(ids); }, [rf, removeMany]);
   clearDemoRef.current = clearDemo;
   const open = useCallback((id) => setLightbox(id), []);
-  const toggleStar = useCallback((id) => setGraph((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, star: !n.data.star } } : n))), [setGraph]);
+  const toggleStar = useCallback((id) => setMeta((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, star: !n.data.star } } : n))), [setMeta]);
 
   // Keyboard tree navigation: ↑ parent, ↓ first child, ←→ siblings (by x), Enter focuses the prompt.
   const navigate = useCallback((dir) => {
@@ -396,7 +463,7 @@ export default function App() {
     if (!target) return;
     setNodes((ns) => ns.map((n) => ({ ...n, selected: n.id === target.id })));
     setLightbox((l) => (l ? target.id : l));
-    rf.setCenter(target.position.x + NODE_W / 2, target.position.y + target.height / 2, { zoom: rf.getZoom(), duration: 250 });
+    rf.setCenter(target.position.x + NODE_W / 2, target.position.y + target.height / 2, { zoom: rf.getZoom(), duration: DUR(250) });
   }, [rf, setNodes]);
 
   // The spotlight goes away on the first click or keypress anywhere, and never comes back.
@@ -429,6 +496,9 @@ export default function App() {
       const arrow = ARROWS[e.key];
       const inText = t.closest?.('input,textarea,select');
       if (inText && !(arrow && t.tagName === 'TEXTAREA' && !t.value)) { if (e.key === 'Escape') t.blur(); return; }
+      // The share studio and the settings drawer own their keys; a focused button keeps Space/Enter for itself.
+      if (document.querySelector('dialog[open]:not(.lightbox)') || t.closest?.('.drawer')) return;
+      if ((e.code === 'Space' || e.key === 'Enter') && t.closest?.('button,a,summary,[role="button"]')) return;
       if (arrow) { e.preventDefault(); return navigate(arrow); }
       if (e.key === 'Enter') { const ta = document.querySelector('.react-flow__node.selected textarea'); if (ta) { e.preventDefault(); ta.focus(); } return; }
       if (e.code === 'Space') { e.preventDefault(); setCompare(true); }
@@ -460,8 +530,11 @@ export default function App() {
   }, [takeFiles]);
 
   const pickFile = useCallback(() => fileRef.current.click(), []);
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch]);
+  // hq: whether a higher-resolution re-render is on offer, at what tier and rough price.
+  const hq = useMemo(() => ({ differs: hqDiffers, res: settings.downloadRes, price: avgCost * 1.5 }), [hqDiffers, settings.downloadRes, avgCost]);
+  const openSettings = useCallback(() => setDrawer(true), []);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, openSettings, narrow, touch }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, openSettings, narrow, touch]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
   const soloId = selected.length === 1 ? selected[0].id : null;
   useEffect(() => {
@@ -472,7 +545,7 @@ export default function App() {
     // Centre the card in the upper part of the screen; the prompt sheet takes the bottom ~40%.
     const box = document.querySelector('.react-flow')?.getBoundingClientRect();
     const lift = box ? (box.height * 0.12) / zoom : 0;
-    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + (n.height || 300) / 2 + lift, { zoom, duration: 250 });
+    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + (n.height || 300) / 2 + lift, { zoom, duration: DUR(250) });
   }, [narrow, soloId]); // eslint-disable-line
 
   // Multi-select composer: cross-seed selections get "swap our outfits" style prompts.
@@ -521,7 +594,6 @@ export default function App() {
         maxZoom={4}
         defaultEdgeOptions={{ type: 'prompt' }}
         colorMode={settings.theme}
-        fitView
       >
         <Background gap={24} />
         <Controls showInteractive={false} />
@@ -544,9 +616,9 @@ export default function App() {
           <div className="brand">
             <b>
               <svg className="mark" width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#3b82f6" /><path d="M32 22v8M32 30Q32 40 20 44M32 30Q32 40 44 44" fill="none" stroke="#fff" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="32" cy="16" r="7.5" fill="#fff" /><circle cx="18" cy="49" r="7" fill="#fff" /><circle cx="46" cy="49" r="7" fill="#fff" /></svg>
-              <span>face<em>fork</em></span>
+              <span className="wordmark">face<em>fork</em></span>
             </b>
-            <span>Upload a photo, ask “what if…”, every answer becomes a branch.</span>
+            <span className="tag">Upload a photo, ask “what if…”, every answer becomes a branch.</span>
           </div>
           <div className="toolbar">
             <button onClick={() => fileRef.current.click()} title={photosOf(nodes).length ? 'Add another person to compare or combine' : 'Upload a photo — or drop / paste one anywhere'}>＋ New photo</button>
@@ -554,14 +626,14 @@ export default function App() {
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="5" y="1" width="4" height="3" rx=".8" /><rect x="1" y="10" width="4" height="3" rx=".8" /><rect x="9" y="10" width="4" height="3" rx=".8" /><path d="M7 4v3M7 7H3v3M7 7h4v3" /></svg>
               Auto-arrange
             </button>
-            <button className={edits.length ? 'share' : ''} disabled={!photosOf(nodes).some((n) => n.data.status === 'ready')} onClick={() => setShareOpen(true)} title="Turn this tree into something you can post">✦ Share</button>
+            <button className={edits.length ? 'share' : ''} disabled={!photosOf(nodes).some((n) => n.data.status === 'ready')} onClick={() => setShareOpen(true)} onPointerEnter={loadShare} onFocus={loadShare} title="Turn this tree into something you can post">✦ Share</button>
           </div>
         </Panel>
         <Panel position="top-right">
           <button className={`status${settings.key ? '' : ' nokey'}`} onClick={() => setDrawer((d) => !d)} title="Settings — key, model, quality, theme">
             <i />
             <span>{settings.key ? (model?.name || settings.model || 'model').replace(/^[^:]+:\s*/, '').replace(/\s*\(.*\)$/, '') : 'Add your OpenRouter key'}</span>
-            {settings.key && total > 0 && <em title="from OpenRouter’s usage report">${total.toFixed(2)}</em>}
+            {settings.key && settings.spent > 0 && <em title="Spent from this browser so far, per OpenRouter’s usage reports (deleting images doesn’t refund them)">${settings.spent.toFixed(2)}</em>}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
         </Panel>
@@ -577,13 +649,13 @@ export default function App() {
         {tour && <Tour nodes={nodes} />}
         {keyGate && (
           <Panel position="bottom-center" className="keygate">
-            <KeyGate onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
+            <KeyGate savedKey={settings.key} onSave={saveKeyAndGo} onCancel={() => { setDraft(keyGate.prompt); setKeyGate(null); }} />
           </Panel>
         )}
         {narrow && !keyGate && selected.length === 1 && selected[0].data.status === 'ready' && (
           <Panel position="bottom-center" className="composer sheet">
             <div className="thumbs"><img src={selected[0].data.url} alt="" /></div>
-            <PromptBox key={selected[0].id} autoFocus={false} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
+            <PromptBox key={selected[0].id} autoFocus={false} initial={draft} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
           </Panel>
         )}
         {selected.length > 1 && !keyGate && (
@@ -599,13 +671,14 @@ export default function App() {
               <div className="thumbs">{selected.map((n) => <img key={n.id} src={n.data.url} alt="" />)}</div>
             )}
             <PromptBox
+              initial={draft}
               chips={crossSeed ? CROSS_SEED : SAME_SEED}
               placeholder={crossSeed ? 'Swap our outfits' : `Combine these ${selected.length} photos… e.g. "Give me the fedora AND the mustache"`}
               onSubmit={(t) => generate(selected.map((n) => n.id), t)}
             />
           </Panel>
         )}
-        <div className={`toasts${selected.length > 1 || keyGate ? ' lifted' : ''}`}>
+        <div className={`toasts${selected.length > 1 || keyGate ? ' lifted' : ''}`} aria-live="polite">
           {notes.map((n) => (
             <div key={n.id} className={`pill ${n.kind}`}>
               <i>{n.kind === 'ok' ? '✓' : n.kind === 'error' ? '✕' : 'ℹ'}</i>
@@ -622,22 +695,30 @@ export default function App() {
         onExport={exportAll} onImport={() => fileRef.current.click()} onDemo={loadDemo} onClearDemo={demoIds.length ? clearDemo : null} narrow={narrow}
         hq={{ pending: hqPending, estimate: hqPending * avgCost * 1.5, differs: hqDiffers, run: reprocessAll }} />
       <Lightbox node={lightboxNode} onClose={() => setLightbox(null)} />
-      <ShareDialog open={shareOpen} nodes={nodes} focusId={selected[0]?.id} model={settings.model}
-        onClose={() => setShareOpen(false)} onToast={flash} />
+      {(shareOpen || shareSeen.current) && (
+        <Suspense fallback={null}>
+          <ShareDialog open={shareOpen} nodes={nodes} focusId={selected[0]?.id} model={settings.model}
+            onClose={() => setShareOpen(false)} onToast={flash} />
+        </Suspense>
+      )}
     </Ctx.Provider>
   );
 }
 
 // Asked at the moment of intent: keeps the prompt, takes the key, continues.
-function KeyGate({ onSave, onCancel }) {
+function KeyGate({ savedKey, onSave, onCancel }) {
   const [key, setKey] = useState('');
   const ok = /^sk-or-/.test(key.trim()) || key.trim().length > 20;
   return (
     <div className="keygate-card">
-      <p><b>One thing first.</b> Edits run on your own OpenRouter key — about $0.02–0.10 per image, and the key never leaves this browser.</p>
+      <p><b>One thing first.</b> Edits run on your own OpenRouter key — about $0.02–0.10 per image. The key goes straight to OpenRouter and nowhere else; a dedicated key with a spending limit is a good idea.</p>
       <div className="row">
-        <input type="password" autoFocus placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
-        <button className="go" disabled={!ok} onClick={() => onSave(key.trim())}>Save & generate</button>
+        {savedKey
+          ? <button className="go" autoFocus onClick={() => onSave(savedKey)}>Key saved — Generate</button>
+          : <>
+            <input type="password" autoFocus aria-label="OpenRouter API key" placeholder="sk-or-v1-…" value={key} onChange={(e) => setKey(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && ok) onSave(key.trim()); if (e.key === 'Escape') onCancel(); }} />
+            <button className="go" disabled={!ok} onClick={() => onSave(key.trim())}>Save & generate</button>
+          </>}
         <button onClick={onCancel} title="Keep the prompt, skip for now">Not now</button>
       </div>
       <small><a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get a key ↗</a> · also under ⚙ Settings</small>

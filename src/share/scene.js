@@ -210,8 +210,9 @@ export function render(scene, scale = 1, canvas) {
   return c;
 }
 
+// Rejects instead of resolving null (the browser's answer when the canvas is too large or tainted).
 export const toBlob = (canvas, type = 'image/png', quality = 0.92) =>
-  new Promise((res) => canvas.toBlob(res, type, quality));
+  new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error(`Could not encode a ${canvas.width}×${canvas.height} image — try a smaller size`))), type, quality));
 
 // ---- shared furniture ----
 export const WORDMARK = 'facefork.com';
