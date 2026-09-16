@@ -91,6 +91,7 @@ export default function App() {
   const [settings, setSettings] = useState(() => ({ ...DEFAULTS, ...loadSettings() }));
   const settingsRef = useRef(settings); settingsRef.current = settings;
   const [keyGate, setKeyGate] = useState(null); // {parentIds, prompt, reuseId} waiting for an API key
+  const [draft, setDraft] = useState(''); // prompt handed back to the composer when the gate is dismissed
   const [drawer, setDrawer] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
@@ -247,9 +248,7 @@ export default function App() {
   }, [addSeed, importFile]);
 
   // Generate a child of `parentIds`; with `reuseId` the existing (error/pending) node is re-rendered in place.
-  const generate = useCallback(async (parentIds, prompt, reuseId) => {
-    // Soft gate: no key yet → keep the request and ask for the key right here, then continue.
-    if (!settingsRef.current.key) return setKeyGate({ parentIds, prompt, reuseId });
+  const startGeneration = useCallback(async (parentIds, prompt, reuseId) => {
     const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
     const parents = parentIds.map((id) => byId.get(id)).filter((n) => n?.data.status === 'ready');
     if (!parents.length) return flash('Parent image is not ready yet');
@@ -284,6 +283,13 @@ export default function App() {
       patch(id, { status: 'error', ghost: false, url: null, error: e.message });
     }
   }, [rf, run, setGraph, setNodes, patch, settings.exploreRes, combineHint]);
+  // Returns false when nothing started (no key yet: the request waits in the gate and the prompt box keeps its text).
+  const generate = useCallback((parentIds, prompt, reuseId) => {
+    if (!settingsRef.current.key) { setKeyGate({ parentIds, prompt, reuseId }); return false; }
+    setDraft('');
+    startGeneration(parentIds, prompt, reuseId);
+    return true;
+  }, [startGeneration]);
 
   // Re-render one node at download resolution from its parents' best images (same seed where supported).
   const makeHQ = useCallback(async (id) => {
@@ -578,13 +584,13 @@ export default function App() {
         {tour && <Tour nodes={nodes} />}
         {keyGate && (
           <Panel position="bottom-center" className="keygate">
-            <KeyGate savedKey={settings.key} onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
+            <KeyGate savedKey={settings.key} onSave={saveKeyAndGo} onCancel={() => { setDraft(keyGate.prompt); setKeyGate(null); }} />
           </Panel>
         )}
         {narrow && !keyGate && selected.length === 1 && selected[0].data.status === 'ready' && (
           <Panel position="bottom-center" className="composer sheet">
             <div className="thumbs"><img src={selected[0].data.url} alt="" /></div>
-            <PromptBox key={selected[0].id} autoFocus={false} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
+            <PromptBox key={selected[0].id} autoFocus={false} initial={draft} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
           </Panel>
         )}
         {selected.length > 1 && !keyGate && (
@@ -600,6 +606,7 @@ export default function App() {
               <div className="thumbs">{selected.map((n) => <img key={n.id} src={n.data.url} alt="" />)}</div>
             )}
             <PromptBox
+              initial={draft}
               chips={crossSeed ? CROSS_SEED : SAME_SEED}
               placeholder={crossSeed ? 'Swap our outfits' : `Combine these ${selected.length} photos… e.g. "Give me the fedora AND the mustache"`}
               onSubmit={(t) => generate(selected.map((n) => n.id), t)}
