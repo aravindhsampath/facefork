@@ -276,13 +276,23 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
 .sb-side button { background: var(--bg); border: 1px solid var(--border); border-radius: 7px; padding: 6px 10px; }
 
 @media (max-width: 900px) {
-  .sb-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr) auto; }
-  .sb-list { display: flex; gap: 6px; overflow-x: auto; border-right: none; border-bottom: 1px solid var(--border); }
+  /* One scrolling sheet: filmstrip, format strip, a fixed-height preview, then the options. */
+  .sharebox { width: 100vw; max-width: none; height: 100dvh; max-height: none; border-radius: 0; }
+  .sb-body { display: flex; flex-direction: column; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+  .sb-list { flex: none; display: flex; gap: 6px; overflow-x: auto; padding: 8px 10px; border-right: none; border-bottom: 1px solid var(--border); scrollbar-width: none; }
+  .sb-list::-webkit-scrollbar { display: none; }
   .sb-list > div { display: flex; gap: 6px; }
   .sb-list h3 { display: none; }
-  .sb-item { width: max-content; }
+  .sb-item { width: max-content; padding: 7px 12px; white-space: nowrap; }
   .sb-item small { display: none; }
-  .sb-side { border-left: none; border-top: 1px solid var(--border); }
+  .sb-main { flex: none; height: 46vh; min-height: 260px; padding: 10px; }
+  .sb-stage { height: 100%; }
+  .sb-side { flex: none; overflow: visible; border-left: none; border-top: 1px solid var(--border); padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .sb-note { font-size: 11px; }
+  .sb-head { padding: 10px 12px; }
+  .sb-film img { width: 38px; height: 38px; }
+  .sb-text .row { max-width: 58%; }
+  .sb-side input, .sb-side textarea, .sb-side select { font-size: 16px; }
 }
 
 /* ---- v4: hover affordances, progress, undo pills, plates, edge pulse ---- */
@@ -391,7 +401,8 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
 .adder .plus { width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center; font-size: 34px; line-height: 1; background: var(--accent); color: #fff; box-shadow: 0 6px 18px color-mix(in srgb, var(--accent) 45%, transparent); }
 .adder b { font-size: 15px; line-height: 1.3; }
 .adder small { color: var(--muted); font-size: 12px; }
-.react-flow__node-adder { pointer-events: auto; }
+/* React Flow inlines pointer-events:none on nodes that are neither selectable nor draggable; these must stay tappable. */
+.react-flow__node-adder, .react-flow__node-filmstrip { pointer-events: all !important; }
 
 /* ---- credit pill ---- */
 .react-flow__panel.credit { margin-left: 56px; margin-bottom: 15px; }
