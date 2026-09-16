@@ -1,0 +1,136 @@
+{
+ "model": "google/gemini-3.1-flash-image",
+ "generated": "2026-09-16",
+ "nodes": [
+  {
+   "id": "sam",
+   "name": "Sam",
+   "prompt": "",
+   "parents": [],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "sam.webp"
+  },
+  {
+   "id": "mona",
+   "name": "Mona Lisa",
+   "prompt": "",
+   "parents": [],
+   "star": false,
+   "status": "ready",
+   "w": 604,
+   "h": 900,
+   "image": "mona.webp"
+  },
+  {
+   "id": "glasses",
+   "prompt": "What if I had round tortoiseshell glasses?",
+   "parents": [
+    "sam"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "glasses.webp"
+  },
+  {
+   "id": "beard",
+   "prompt": "Give me a full beard",
+   "parents": [
+    "sam"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "beard.webp"
+  },
+  {
+   "id": "blonde",
+   "prompt": "What if I went blonde?",
+   "parents": [
+    "sam"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "blonde.webp"
+  },
+  {
+   "id": "beanie",
+   "prompt": "A red beanie and a denim jacket",
+   "parents": [
+    "sam"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "beanie.webp"
+  },
+  {
+   "id": "glasses-beard",
+   "prompt": "Now add a short beard too",
+   "parents": [
+    "glasses"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 671,
+   "h": 900,
+   "image": "glasses-beard.webp"
+  },
+  {
+   "id": "older",
+   "prompt": "Make me 20 years older",
+   "parents": [
+    "sam"
+   ],
+   "star": false,
+   "status": "pending"
+  },
+  {
+   "id": "mustache",
+   "prompt": "Give me a mustache and a little goatee, like Duchamp did",
+   "parents": [
+    "mona"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 604,
+   "h": 900,
+   "image": "mustache.webp"
+  },
+  {
+   "id": "passport",
+   "prompt": "Now make it a passport photo, neutral background",
+   "parents": [
+    "mustache"
+   ],
+   "star": false,
+   "status": "ready",
+   "w": 604,
+   "h": 900,
+   "image": "passport.webp"
+  },
+  {
+   "id": "cafe2",
+   "prompt": "Put us in the same photo, at a café in Amsterdam",
+   "parents": [
+    "beanie",
+    "mona"
+   ],
+   "star": true,
+   "status": "ready",
+   "cost": 0.068342,
+   "seed": 1357120902,
+   "w": 671,
+   "h": 900,
+   "image": "cafe2.webp"
+  }
+ ]
+}

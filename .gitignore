@@ -1,0 +1,6 @@
+node_modules
+dist
+.DS_Store
+demo/mona-780.jpg
+.env
+.env.*

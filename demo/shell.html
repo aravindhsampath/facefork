@@ -1,0 +1,148 @@
+<title>Nineteen Ways to Share a Face</title>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+:root{
+  --wall:#d8d5cc; --panel:#f1efe9; --mount:#c6c3ba; --ink:#1b1913; --dim:#6d685c;
+  --rule:#bfbbaf; --gold:#9a711a; --cut:#8d3b2f;
+  --display:"Cormorant Garamond",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --wall:#131418; --panel:#1c1e24; --mount:#0c0d10; --ink:#e8e5db; --dim:#8b887e;
+    --rule:#2f323a; --gold:#cfa33c; --cut:#d4705e;
+  }
+}
+:root[data-theme="dark"]{
+  --wall:#131418; --panel:#1c1e24; --mount:#0c0d10; --ink:#e8e5db; --dim:#8b887e;
+  --rule:#2f323a; --gold:#cfa33c; --cut:#d4705e;
+}
+*{box-sizing:border-box}
+body{background:var(--wall);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+.page{max-width:1280px;margin:0 auto;padding-inline:24px;padding-block:0 64px}
+:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+.mast{padding-block:56px 26px;border-bottom:1px solid var(--rule)}
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin:0 0 14px}
+.mast h1{font-family:var(--display);font-weight:600;font-size:clamp(38px,6vw,68px);line-height:1.02;margin:0;
+  text-wrap:balance;letter-spacing:-.01em}
+.mast .lede{max-width:62ch;margin:16px 0 0;color:var(--dim);font-size:16px}
+.mast .lede b{color:var(--ink);font-weight:500}
+
+.note{display:flex;gap:14px;margin-top:26px;padding:14px 16px;background:var(--panel);
+  border:1px solid var(--rule);border-left:3px solid var(--gold)}
+.note h2{font-family:var(--mono);font-size:11px;letter-spacing:.18em;text-transform:uppercase;
+  color:var(--gold);margin:2px 0 0;flex-shrink:0;width:96px}
+.note p{margin:0;font-size:13.5px;color:var(--dim);max-width:70ch}
+.note p+p{margin-top:8px}
+
+.strip{position:sticky;top:0;z-index:10;display:flex;flex-wrap:wrap;align-items:center;gap:14px;
+  padding-block:12px;margin-bottom:8px;background:color-mix(in srgb,var(--wall) 92%,transparent);
+  backdrop-filter:blur(8px);border-bottom:1px solid var(--rule)}
+.strip .count{font-family:var(--mono);font-size:12px;color:var(--dim);font-variant-numeric:tabular-nums}
+.strip .sp{flex:1}
+.toggle{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--dim);cursor:pointer}
+.toggle input{width:15px;height:15px;accent-color:var(--gold);cursor:pointer}
+button{font:inherit;color:inherit;cursor:pointer;background:none;border:1px solid var(--rule);padding:6px 12px}
+button:hover:not(:disabled){border-color:var(--gold)}
+button:disabled{opacity:.4;cursor:default}
+#copycut{font-size:13px;background:var(--panel)}
+
+.group{margin-top:40px}
+.group-h{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:11px;
+  letter-spacing:.2em;text-transform:uppercase;color:var(--dim);font-weight:500;margin:0 0 18px}
+.group-h::after{content:"";flex:1;height:1px;background:var(--rule)}
+.group-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(420px,100%),1fr));gap:26px}
+
+.plate{display:flex;flex-direction:column;background:var(--panel);border:1px solid var(--rule);
+  transition:opacity .2s}
+.plate.cut{opacity:.42}
+.plate.cut .pl-head h2{text-decoration:line-through;text-decoration-color:var(--cut)}
+.pl-head{padding:16px 18px 12px}
+.pl-no{display:block;font-family:var(--mono);font-size:10.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--gold)}
+.pl-head h2{font-family:var(--display);font-weight:600;font-size:27px;line-height:1.15;margin:3px 0 0;letter-spacing:-.005em}
+.pl-cap{margin:7px 0 0;font-size:13px;color:var(--dim);max-width:52ch}
+.is-motion .pl-no::after{content:"· live";color:var(--dim);margin-left:6px;letter-spacing:.12em}
+
+.mount{height:440px;display:grid;place-items:center;padding:14px;background:var(--mount);
+  border-block:1px solid var(--rule);overflow:hidden}
+.mount canvas{max-width:100%;max-height:100%;box-shadow:0 6px 26px rgba(0,0,0,.34)}
+.pl-none{margin:0;font-size:13px;color:var(--dim);text-align:center;max-width:28ch}
+
+.filebox{max-width:100%;max-height:100%;overflow-y:auto;background:var(--panel);padding:20px 22px;border:1px solid var(--rule)}
+.filebox h3{font-family:var(--mono);font-size:13px;font-weight:500;margin:0 0 10px;color:var(--gold);word-break:break-all}
+.filebox p{margin:0 0 10px;font-size:13px;color:var(--dim)}
+.filebox ol{margin:0 0 10px;padding-left:20px;font-size:13px;line-height:1.75}
+.filebox li{color:var(--ink)}
+.filebox .fine{margin:0;font-size:12px;font-style:italic}
+
+.pl-foot{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 18px 16px}
+.pl-meta{font-family:var(--mono);font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums;width:100%}
+.pl-opts{display:flex;flex-wrap:wrap;gap:8px 14px;flex:1;min-width:0}
+.opt{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim)}
+.opt input[type=text]{width:98px}
+.opt input[type=text],.opt select{font:inherit;font-size:12px;color:var(--ink);background:var(--wall);
+  border:1px solid var(--rule);padding:3px 5px}
+.opt input[type=checkbox]{width:14px;height:14px;accent-color:var(--gold)}
+.pl-act{display:flex;gap:6px;margin-left:auto}
+.act{font-size:12px;padding:5px 11px;white-space:nowrap}
+.act.keep.on{border-color:var(--gold);color:var(--gold)}
+.act.cut.on{border-color:var(--cut);color:var(--cut)}
+.act.save{background:var(--wall)}
+
+.foot{margin-top:56px;padding-top:20px;border-top:1px solid var(--rule);font-size:13px;color:var(--dim);
+  display:flex;flex-wrap:wrap;gap:10px 24px}
+.foot code{font-family:var(--mono);font-size:12px;color:var(--ink)}
+
+@media (max-width:560px){
+  .mount{height:340px}
+  .note{flex-direction:column;gap:6px}
+  .note h2{width:auto}
+  .pl-act{margin-left:0;width:100%}
+  .act{flex:1}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="page" id="app">
+  <header class="mast">
+    <p class="eyebrow">howdoilook.ai · share formats · specimen sheet</p>
+    <h1>Nineteen Ways to Share a Face</h1>
+    <p class="lede">Every share format in the new <b>Share this creation</b> dialog, rendered live from the
+      Mona Lisa demo tree — <span id="status">loading…</span>. Each plate below is drawn by the same
+      <code>src/share</code> code the app ships, so what you see is what a user would post. Mark what to keep,
+      cut the rest, and send me the list.</p>
+    <div class="note">
+      <h2>Provenance</h2>
+      <div>
+        <p>The painting is Leonardo's, public domain, via Wikimedia Commons. The six “edits” hanging off it were
+          <b>drawn here in your browser with canvas</b> — a real bezier mustache, real drawn aviators, real filters —
+          not generated by an image model, because that would spend your OpenRouter credit to build a demo.
+          Duchamp drew his mustache by hand in 1919, so the stand-ins are at least in period.</p>
+        <p>In the app these are model output. Nothing else about these plates is faked: the layouts, the costs on
+          the receipt, the tree geometry and the animation timings are all real.</p>
+      </div>
+    </div>
+  </header>
+
+  <div class="strip">
+    <span class="count" id="tally">loading…</span>
+    <label class="toggle" for="wordmark"><input type="checkbox" id="wordmark" checked> corner wordmark</label>
+    <span class="sp"></span>
+    <button id="copycut" disabled>Copy my keep / cut list</button>
+  </div>
+
+  <div id="grid"></div>
+
+  <footer class="foot">
+    <span>Stills render at 2× on save. Motion saves as MP4 where WebCodecs exists, GIF otherwise.</span>
+    <span>Files: <code>src/share/{scene,stills,motion,video,files}.js</code></span>
+  </footer>
+</div>
+
+<script>window.__MONA = "%%MONA%%";</script>
+<script>%%BUNDLE%%</script>
+<script>HDL.start(document.getElementById('app'), window.__MONA);</script>
