@@ -17,7 +17,7 @@ const ShareDialog = lazy(loadShare);
 import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
 import { layout, plates, edgesOf, nodeHeight, filmPosition, NODE_W } from './layout.js';
 import { normalize, dims, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
-import { generateImage, buildPrompt, pickRatio, snapResolution } from './api.js';
+import { generateImage, listModels, buildPrompt, pickRatio, snapResolution } from './api.js';
 import { loadGraph, saveGraph, loadSettings, saveSettings } from './store.js';
 import { exportTree, importTree } from './share.js';
 import { demoRecords } from './demo.js';
@@ -308,6 +308,11 @@ export default function App() {
     const ctl = new AbortController();
     jobs.current.set(id, ctl);
     try {
+      // The catalog is fetched on first intent, not on page load: without it the resolution and
+      // reference-count checks (and the ↑ re-render offer) would silently not apply.
+      if (!settingsRef.current.models?.length) {
+        try { const models = await listModels(); settingsRef.current = { ...settingsRef.current, models }; updateSettings({ models }); } catch { /* generate anyway; the drawer can retry */ }
+      }
       // Pre-encoded refs are cached on the node; older records get encoded once here.
       const refs = await Promise.all(parents.map(async (p) => {
         const inline = p.data.inline || await toInline(p.data.blob);
