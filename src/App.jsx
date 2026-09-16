@@ -12,7 +12,7 @@ import Lightbox from './Lightbox.jsx';
 import Settings from './Settings.jsx';
 import ShareDialog from './ShareDialog.jsx';
 import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
-import { layout, plates, edgesOf, nodeHeight, NODE_W } from './layout.js';
+import { layout, plates, edgesOf, nodeHeight, filmPosition, NODE_W } from './layout.js';
 import { normalize, dims, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
 import { generateImage, buildPrompt, pickRatio, snapResolution } from './api.js';
 import { loadGraph, saveGraph, loadSettings, saveSettings } from './store.js';
@@ -162,6 +162,17 @@ export default function App() {
   }, [rf]);
   const patch = useCallback((id, data) =>
     setGraph((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...data } } : n))), [setGraph]);
+  // Metadata-only updates (star, cost, HQ): no dagre pass, so nothing the user dragged moves. The
+  // filmstrip still comes and goes with the first/last star, placed from the current positions.
+  const setMeta = useCallback((fn) => setNodes((cur) => {
+    const next = fn(cur);
+    const photos = photosOf(next);
+    const out = [...photos];
+    if (photos.some((n) => n.data.star)) out.push(next.find((n) => n.type === 'filmstrip') || { ...FILM, position: filmPosition(photos) });
+    const adder = next.find((n) => n.type === 'adder');
+    if (adder) out.push(adder);
+    return out;
+  }), [setNodes]);
   // Merge records into the canvas (ids already present are skipped), or replace it entirely.
   const addRecords = useCallback((recs, { replace = false } = {}) => {
     setGraph((cur) => {
@@ -409,7 +420,7 @@ export default function App() {
   const clearDemo = useCallback(() => { const ids = photosOf(rf.getNodes()).filter((n) => n.data.demo).map((n) => n.id); if (ids.length) removeMany(ids); }, [rf, removeMany]);
   clearDemoRef.current = clearDemo;
   const open = useCallback((id) => setLightbox(id), []);
-  const toggleStar = useCallback((id) => setGraph((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, star: !n.data.star } } : n))), [setGraph]);
+  const toggleStar = useCallback((id) => setMeta((cur) => cur.map((n) => (n.id === id ? { ...n, data: { ...n.data, star: !n.data.star } } : n))), [setMeta]);
 
   // Keyboard tree navigation: ↑ parent, ↓ first child, ←→ siblings (by x), Enter focuses the prompt.
   const navigate = useCallback((dir) => {
