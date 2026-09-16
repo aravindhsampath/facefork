@@ -29,9 +29,12 @@ button { cursor: pointer; }
 
 .top { display: flex; flex-direction: column; gap: 10px; }
 .brand { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; }
-.brand b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
-.brand b em { font-style: normal; font-weight: 800; color: var(--accent); margin-left: -1px; }
-.brand .mark { border-radius: 6px; box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent); }
+/* Wordmark: the word is its own before/after — "face" plain, "fork" the same word edited into a
+   serif italic, like a variant grown from the original. Type stays ink-coloured; the mark carries the blue. */
+.brand b { display: flex; align-items: center; gap: 9px; font-size: 18px; font-weight: 600; letter-spacing: -.02em; color: var(--fg); }
+.brand b span { display: inline-flex; align-items: baseline; }
+.brand b em { font-family: Georgia, "Iowan Old Style", "Times New Roman", serif; font-style: italic; font-weight: 400; font-size: 1.22em; letter-spacing: -.01em; margin-left: 1px; position: relative; top: 1px; }
+.brand .mark { border-radius: 6px; box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent); }
 .brand span { color: var(--muted); font-size: 12.5px; }
 .toolbar button svg { vertical-align: -2px; margin-right: 5px; }
 
