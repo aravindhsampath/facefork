@@ -13,7 +13,7 @@ function useElapsed(since, running) {
 }
 
 function PhotoNode({ id, data, selected }) {
-  const { selectedCount, compare, generate, remove, open, toggleStar, download, combineHint, narrow, touch } = useContext(Ctx);
+  const { selectedCount, compare, generate, remove, open, toggleStar, download, rerender, hq, combineHint, narrow, touch } = useContext(Ctx);
   const rf = useReactFlow();
   const ready = data.status === 'ready';
   const loading = data.status === 'loading';
@@ -41,7 +41,8 @@ function PhotoNode({ id, data, selected }) {
           </div>
         )}
         {parentUrl && <div className="badge">before</div>}
-        {data.hqBusy && <div className="badge hq">HQ…</div>}
+        {data.hqBusy && <div className="badge hq">{hq.res}…</div>}
+        {!data.hqBusy && data.hqBlob && <div className="badge hq" title={`A ${hq.res} version was made — Download saves it`}>{hq.res}</div>}
         <label className="chk nodrag" title="Select several to combine them" onClick={stop}>
           <input type="checkbox" checked={!!selected} onChange={() => rf.updateNode(id, (n) => ({ selected: !n.selected }))} />
         </label>
@@ -51,7 +52,10 @@ function PhotoNode({ id, data, selected }) {
             <button onClick={act(() => toggleStar(id))}><i>{data.star ? '⭐' : '☆'}</i>favourite</button>
             {data.parents.length > 0 && <button onClick={act(() => generate(data.parents, data.prompt))}><i>🎲</i>again</button>}
             <button onClick={act(() => open(id))}><i>⤢</i>view</button>
-            <button onClick={act(() => download(id))}><i>↓</i>download</button>
+            <button onClick={act(() => download(id))} title="Save this exact image — no request, no charge"><i>↓</i>download</button>
+            {hq.differs && data.parents.length > 0 && !data.hqBlob && !data.hqBusy && (
+              <button onClick={act(() => rerender(id).catch(() => {}))} title={`Re-render at ${hq.res} · ≈$${hq.price.toFixed(2)} · a fresh generation, so details may change`}><i>↑</i>{hq.res}</button>
+            )}
           </div>
         )}
       </div>

@@ -13,7 +13,7 @@ import Settings from './Settings.jsx';
 import ShareDialog from './ShareDialog.jsx';
 import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
 import { layout, plates, edgesOf, nodeHeight, NODE_W } from './layout.js';
-import { normalize, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
+import { normalize, dims, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
 import { generateImage, buildPrompt, pickRatio, snapResolution } from './api.js';
 import { loadGraph, saveGraph, loadSettings, saveSettings } from './store.js';
 import { exportTree, importTree } from './share.js';
@@ -205,7 +205,7 @@ export default function App() {
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);
   useEffect(() => { document.title = generating ? `facefork · ${generating} generating…` : 'facefork'; }, [generating]);
 
-  // ---- core generation: refs are data URLs; returns normalized blob + dims + cost ----
+  // ---- core generation: refs are data URLs; returns the model's bytes untouched + dims + cost ----
   const run = useCallback(async ({ refs, prompt, people, ratioFrom, tier, seed, onPartial }) => {
     // Settings as they are now, not as they were when this closure was rendered: the key gate
     // saves a key and generates in the same tick, before React has re-rendered anything.
@@ -222,8 +222,8 @@ export default function App() {
       stream: !!model?.stream && !!onPartial,
       onPartial,
     });
-    const { blob, w, h } = await normalize(await base64ToBlob(res), tier === '4K' ? 4096 : 2048);
-    return { blob, w, h, cost: res.cost || 0 };
+    const blob = base64ToBlob(res);
+    return { blob, ...(await dims(blob)), cost: res.cost || 0 };
   }, []);
 
   const addSeed = useCallback(async (file) => {
@@ -291,23 +291,32 @@ export default function App() {
     return true;
   }, [startGeneration]);
 
-  // Re-render one node at download resolution from its parents' best images (same seed where supported).
-  const makeHQ = useCallback(async (id) => {
-    const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
-    const n = byId.get(id);
-    if (!n || !n.data.parents.length || n.data.hqBlob) return;
-    const parents = n.data.parents.map((p) => byId.get(p)).filter(Boolean);
-    const people = new Set(parents.map((p) => rootOf(byId, p.id))).size;
-    rf.updateNodeData(id, { hqBusy: true });
-    try {
-      const refs = await Promise.all(parents.map((p) => toInline(p.data.hqBlob || p.data.blob, 2048)));
-      const out = await run({ refs, prompt: n.data.prompt, people, ratioFrom: parents[0].data, tier: settings.downloadRes, seed: n.data.seed });
-      patch(id, { hqBusy: false, hqBlob: out.blob, hqUrl: URL.createObjectURL(out.blob), cost: (n.data.cost || 0) + out.cost });
-    } catch (e) {
-      rf.updateNodeData(id, { hqBusy: false });
-      throw e;
-    }
-  }, [rf, run, patch, settings.downloadRes]);
+  // Re-render one node at download resolution from its parents' best images. This is a fresh
+  // generation (same seed where the model supports it), so the picture can change; it is never
+  // implied by Download. One in-flight job per node: a second click joins the first.
+  const hqJobs = useRef(new Map());
+  const rerender = useCallback((id) => {
+    if (hqJobs.current.has(id)) return hqJobs.current.get(id);
+    const job = (async () => {
+      const byId = new Map(rf.getNodes().map((n) => [n.id, n]));
+      const n = byId.get(id);
+      if (!n || !n.data.parents.length || n.data.hqBlob) return;
+      const parents = n.data.parents.map((p) => byId.get(p)).filter(Boolean);
+      const people = new Set(parents.map((p) => rootOf(byId, p.id))).size;
+      rf.updateNodeData(id, { hqBusy: true });
+      try {
+        const refs = await Promise.all(parents.map((p) => toInline(p.data.hqBlob || p.data.blob, 2048)));
+        const out = await run({ refs, prompt: n.data.prompt, people, ratioFrom: parents[0].data, tier: settingsRef.current.downloadRes, seed: n.data.seed });
+        const cost = (rf.getNode(id)?.data.cost || 0) + out.cost;
+        rf.updateNodeData(id, { hqBusy: false, hqBlob: out.blob, hqUrl: URL.createObjectURL(out.blob), cost });
+      } catch (e) {
+        rf.updateNodeData(id, { hqBusy: false });
+        throw e;
+      }
+    })().finally(() => hqJobs.current.delete(id));
+    hqJobs.current.set(id, job);
+    return job;
+  }, [rf, run]);
 
   // Only a click spends: a key typed under ⚙ while the card waits turns its button into "Generate".
   const saveKeyAndGo = (key) => {
@@ -319,15 +328,12 @@ export default function App() {
 
   const hqDiffers = model?.resolutions?.length > 0 && snapResolution(model.resolutions, settings.exploreRes) !== snapResolution(model.resolutions, settings.downloadRes);
 
-  const download = useCallback(async (id) => {
-    let n = rf.getNode(id);
-    if (n.data.parents.length && !n.data.hqBlob && hqDiffers) {
-      try { await makeHQ(id); } catch (e) { notify(`HQ render failed: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => download(id) } }); }
-      n = rf.getNode(id);
-    }
+  // Saves exactly what is on the card (the HQ version if one was made): no request, no charge.
+  const download = useCallback((id) => {
+    const n = rf.getNode(id);
     const out = n.data.hqBlob || n.data.blob;
     downloadBlob(out, `facefork-${id.slice(0, 8)}${n.data.hqBlob ? '-hq' : ''}.${extOf(out)}`);
-  }, [rf, makeHQ, hqDiffers]);
+  }, [rf]);
 
   // Walk the whole tree seed→leaves, re-rendering each node in HQ from HQ parents.
   const reprocessAll = useCallback(async () => {
@@ -338,10 +344,10 @@ export default function App() {
     let i = 0;
     for (const n of todo) {
       notify(`Re-rendering ${++i} of ${todo.length}…`, { ms: 0, id: 'hq-progress' });
-      try { await makeHQ(n.id); } catch (e) { notify(`HQ failed on “${n.data.prompt}”: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => reprocessAll() } }); return; }
+      try { await rerender(n.id); } catch (e) { notify(`HQ failed on “${n.data.prompt}”: ${e.message}`, { kind: 'error', ms: 8000, action: { label: 'Retry', run: () => reprocessAll() } }); return; }
     }
     notify('Every image re-rendered ✓', { kind: 'ok', id: 'hq-progress' });
-  }, [rf, makeHQ, hqDiffers, settings.downloadRes]);
+  }, [rf, rerender, hqDiffers, settings.downloadRes]);
 
   const exportAll = useCallback(async () => {
     const recs = photosOf(rf.getNodes()).filter((n) => n.data.status !== 'loading').map(toRecord);
@@ -467,8 +473,10 @@ export default function App() {
   }, [takeFiles]);
 
   const pickFile = useCallback(() => fileRef.current.click(), []);
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch]);
+  // hq: whether a higher-resolution re-render is on offer, at what tier and rough price.
+  const hq = useMemo(() => ({ differs: hqDiffers, res: settings.downloadRes, price: avgCost * 1.5 }), [hqDiffers, settings.downloadRes, avgCost]);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, narrow, touch }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, rerender, hq, combineHint, pickFile, narrow, touch]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
   const soloId = selected.length === 1 ? selected[0].id : null;
   useEffect(() => {
