@@ -1,4 +1,9 @@
-# Cloudflare Pages cache policy. Hashed bundles never change; the rest revalidates cheaply.
+# Cloudflare Workers static-assets headers (also applied by `vite dev|preview`, see vite.config.js).
+# Hashed bundles never change; HTML revalidates on every visit so fixes reach everyone.
+# The CSP is the privacy promise, enforced by the browser: the page may connect to itself and
+# OpenRouter, nowhere else. 'unsafe-inline' scripts stay because the interactive export opens as a
+# blob: page, which inherits this policy and carries its own inline script; React Flow positions
+# nodes with inline styles.
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
 /og.jpg
@@ -10,3 +15,5 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://openrouter.ai; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
