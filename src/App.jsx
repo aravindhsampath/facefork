@@ -158,6 +158,18 @@ export default function App() {
     const ns = rf.getNodes().filter((n) => n.type !== 'plate' && n.width && n.height);
     const box = document.querySelector('.react-flow')?.getBoundingClientRect();
     if (!ns.length || !box) return;
+    // A phone can't show a whole tree legibly: land on the first seed (the visitor's own before the
+    // demo's) at a readable size, with its first branches peeking in below. ⛶ still fits everything.
+    if (window.matchMedia(NARROW).matches) {
+      const seeds = ns.filter((n) => n.type === 'photo' && !n.data.parents.length);
+      const seed = seeds.find((n) => !n.data.demo) || seeds[0];
+      if (seed) {
+        const zoom = Math.min(1, Math.max(0.5, (box.width * 0.62) / NODE_W));
+        const top = (document.querySelector('.top')?.getBoundingClientRect().bottom ?? box.top) - box.top + 16; // just under the header
+        rf.setViewport({ x: box.width / 2 - (seed.position.x + NODE_W / 2) * zoom, y: top - seed.position.y * zoom, zoom }, { duration });
+        return;
+      }
+    }
     const x0 = Math.min(...ns.map((n) => n.position.x)), y0 = Math.min(...ns.map((n) => n.position.y));
     const x1 = Math.max(...ns.map((n) => n.position.x + n.width)), y1 = Math.max(...ns.map((n) => n.position.y + n.height));
     const bw = x1 - x0, bh = y1 - y0;
@@ -572,7 +584,6 @@ export default function App() {
         maxZoom={4}
         defaultEdgeOptions={{ type: 'prompt' }}
         colorMode={settings.theme}
-        fitView
       >
         <Background gap={24} />
         <Controls showInteractive={false} />
