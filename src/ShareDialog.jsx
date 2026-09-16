@@ -37,6 +37,16 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   const flashCopied = (what) => { setCopied(what); setTimeout(() => setCopied((c) => (c === what ? '' : c)), 1600); };
 
   const fmt = FORMATS.find((f) => f.id === pick) || FORMATS[0];
+  // Phones: swipe the preview sideways to walk the formats; the chip strip follows so the name is in view.
+  const swipe = useRef(null);
+  const step = (d) => setPick((id) => FORMATS[Math.min(FORMATS.length - 1, Math.max(0, FORMATS.findIndex((f) => f.id === id) + d))].id);
+  const onTouchStart = (e) => { const t = e.touches[0]; swipe.current = { x: t.clientX, y: t.clientY }; };
+  const onTouchEnd = (e) => {
+    const s = swipe.current; swipe.current = null; if (!s || !e.changedTouches[0]) return;
+    const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.5) step(dx < 0 ? 1 : -1);
+  };
+  useEffect(() => { if (TOUCH) ref.current?.querySelector('.sb-item.on')?.scrollIntoView({ inline: 'center', block: 'nearest' }); }, [pick]);
   const raw = allOpts[fmt.id] || {};
   const setOpt = (k, v) => setAllOpts((a) => ({ ...a, [fmt.id]: { ...a[fmt.id], [k]: v } }));
   const opts = useMemo(() => (tree ? resolveOpts(fmt, tree, raw) : raw), [tree, fmt, raw]);
@@ -195,7 +205,7 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
           ))}
         </nav>
 
-        <section className="sb-main">
+        <section className="sb-main" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
           <div className="sb-stage">
             {blocked
               ? <p className="sb-empty">{blocked}</p>
