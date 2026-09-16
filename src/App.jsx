@@ -33,7 +33,6 @@ function useMedia(q) {
   return m;
 }
 
-const DEMO_SEEN = 'howdoilook.demoSeen';
 const COMBINED = 'howdoilook.combined';
 const MAP_KEY = 'howdoilook.minimap';
 const TOUR_SEEN = 'howdoilook.tourSeen';
@@ -182,11 +181,13 @@ export default function App() {
 
   // ---- persistence, demo, theme, title ----
   useEffect(() => {
-    loadGraph().then(async (recs) => {
+    // Nothing stored yet (or storage unreadable) means a first visit: bring the demo. An emptied
+    // canvas is stored as [] and stays empty. No separate "seen" flag, so a browser that cannot
+    // keep the tree between reloads gets the demo again rather than a blank page.
+    loadGraph().catch(() => undefined).then(async (recs) => {
       if (recs?.length) addRecords(recs, { replace: true });
-      else if (!localStorage.getItem(DEMO_SEEN)) {
+      else if (!recs) {
         try { addRecords(await demoRecords()); if (!localStorage.getItem(TOUR_SEEN)) setTour(true); } catch { /* offline: empty canvas */ }
-        localStorage.setItem(DEMO_SEEN, '1');
       }
       loaded.current = true;
     });
@@ -194,7 +195,10 @@ export default function App() {
   const structural = nodes.map((n) => n.id + n.data.status + (n.data.star ? '*' : '') + (n.data.hqBlob ? 'H' : '') + (n.data.cost ?? '')).join();
   useEffect(() => {
     if (!loaded.current) return;
-    const t = setTimeout(() => saveGraph(photosOf(nodes).filter((n) => n.data.status !== 'loading').map(toRecord)), 300);
+    const t = setTimeout(() => saveGraph(photosOf(nodes).filter((n) => n.data.status !== 'loading').map(toRecord)).catch((e) => {
+      console.error(e);
+      notify('This browser isn’t keeping your tree between reloads. Export it from Settings to keep it.', { kind: 'error', ms: 12000, id: 'nosave' });
+    }), 300);
     return () => clearTimeout(t);
   }, [structural]); // eslint-disable-line
   useEffect(() => { document.documentElement.dataset.theme = settings.theme; }, [settings.theme]);

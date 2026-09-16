@@ -4,18 +4,22 @@ const KEY = 'howdoilook.graph.v2';
 const OLD_KEY = 'howdoilook.graph';
 const SETTINGS = 'howdoilook.settings.v2';
 
-// Blobs are content-addressed (blob:<sha256>) so siblings/reloads never duplicate bytes.
+// Blobs are content-addressed (blob:<sha256>) so siblings/reloads never duplicate bytes. They are
+// stored as {type, bytes} rather than Blob: WebKit keeps IDB Blobs as files on disk, which an
+// ephemeral session (Safari Private Browsing) has none of, so every Blob put fails with UnknownError
+// while plain ArrayBuffers go through fine.
 const hashes = new WeakMap();
 const known = new Set();
-async function hashOf(blob) {
+async function hashOf(blob, bytes) {
   let h = hashes.get(blob);
   if (!h) {
-    const d = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer());
+    const d = await crypto.subtle.digest('SHA-256', bytes ?? await blob.arrayBuffer());
     h = [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('');
     hashes.set(blob, h);
   }
   return h;
 }
+const thaw = (v) => (v instanceof Blob || !v ? v : new Blob([v.bytes], { type: v.type })); // older saves hold real Blobs
 
 // records: [{id, prompt, parents, blob, hqBlob, inline, w, h, status, error, cost, star, seed}]
 export async function loadGraph() {
@@ -23,7 +27,7 @@ export async function loadGraph() {
   if (!recs) return recs;
   const hs = [...new Set(recs.flatMap((r) => [r.hash, r.hqHash].filter(Boolean)))];
   const blobs = await getMany(hs.map((h) => `blob:${h}`));
-  const byHash = new Map(hs.map((h, i) => [h, blobs[i]]));
+  const byHash = new Map(hs.map((h, i) => [h, thaw(blobs[i])]));
   hs.forEach((h) => known.add(h));
   const seen = new Set();
   return recs
@@ -35,16 +39,19 @@ export async function loadGraph() {
     });
 }
 
+// Saves run one at a time; the returned promise rejects when the browser refused to store, so the
+// app can say so, while the queue itself keeps going for the next attempt.
 let queue = Promise.resolve();
-export const saveGraph = (records) => (queue = queue.then(() => doSave(records)).catch(console.error));
+export const saveGraph = (records) => { const p = queue.then(() => doSave(records)); queue = p.catch(() => {}); return p; };
 
 async function doSave(records) {
   const out = [];
   const fresh = [];
   const put = async (blob) => {
     if (!blob) return undefined;
-    const h = await hashOf(blob);
-    if (!known.has(h)) { fresh.push([`blob:${h}`, blob]); known.add(h); }
+    const bytes = hashes.has(blob) ? undefined : await blob.arrayBuffer();
+    const h = await hashOf(blob, bytes);
+    if (!known.has(h)) { fresh.push([`blob:${h}`, { type: blob.type, bytes: bytes ?? await blob.arrayBuffer() }]); known.add(h); }
     return h;
   };
   for (const { blob, hqBlob, ...rest } of records) out.push({ ...rest, hash: await put(blob), hqHash: await put(hqBlob) });
