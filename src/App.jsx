@@ -132,7 +132,6 @@ export default function App() {
   const edges = useMemo(() => edgesOf(nodes).map((e) => (e.target === lastAdded ? { ...e, className: 'pulse' } : e)), [nodes, lastAdded]);
   const selected = useMemo(() => nodes.filter((n) => n.selected && n.type === 'photo'), [nodes]);
   const favourites = useMemo(() => photosOf(nodes).filter((n) => n.data.star && n.data.status === 'ready').map((n) => ({ id: n.id, url: n.data.url, prompt: n.data.prompt })), [nodes]);
-  const total = useMemo(() => nodes.reduce((s, n) => s + (n.data.cost || 0), 0), [nodes]);
   const generating = useMemo(() => nodes.filter((n) => n.data.status === 'loading' || n.data.hqBusy).length, [nodes]);
   const edits = useMemo(() => photosOf(nodes).filter((n) => n.data.status === 'ready' && n.data.parents.length), [nodes]);
   const hqPending = useMemo(() => edits.filter((n) => !n.data.hqBlob).length, [edits]);
@@ -189,6 +188,8 @@ export default function App() {
     // keep the tree between reloads gets the demo again rather than a blank page.
     loadGraph().then(async (recs) => {
       if (recs?.length) addRecords(recs, { replace: true });
+      // Trees saved before the running total existed: start it from what those images cost.
+      if (settingsRef.current.spent == null && recs?.length) updateSettings({ spent: recs.reduce((s, r) => s + (r.cost || 0), 0) });
       else if (!recs) {
         try { addRecords(await demoRecords()); if (!localStorage.getItem(TOUR_SEEN)) setTour(true); } catch { /* offline: empty canvas */ }
       }
@@ -596,7 +597,7 @@ export default function App() {
           <button className={`status${settings.key ? '' : ' nokey'}`} onClick={() => setDrawer((d) => !d)} title="Settings — key, model, quality, theme">
             <i />
             <span>{settings.key ? (model?.name || settings.model || 'model').replace(/^[^:]+:\s*/, '').replace(/\s*\(.*\)$/, '') : 'Add your OpenRouter key'}</span>
-            {settings.key && total > 0 && <em title="from OpenRouter’s usage report">${total.toFixed(2)}</em>}
+            {settings.key && settings.spent > 0 && <em title="Spent from this browser so far, per OpenRouter’s usage reports (deleting images doesn’t refund them)">${settings.spent.toFixed(2)}</em>}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></svg>
           </button>
         </Panel>
