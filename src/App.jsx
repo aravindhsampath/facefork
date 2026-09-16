@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ReactFlow, Background, Controls, MiniMap, Panel, useNodesState, useReactFlow } from '@xyflow/react';
 import { Ctx } from './ctx.js';
 import PhotoNode from './PhotoNode.jsx';
@@ -10,7 +10,10 @@ import PromptEdge from './PromptEdge.jsx';
 import PromptBox from './PromptBox.jsx';
 import Lightbox from './Lightbox.jsx';
 import Settings from './Settings.jsx';
-import ShareDialog from './ShareDialog.jsx';
+// The share studio (formats, renderer, tree builder) is most of the bundle and only needed once
+// there is something to share, so it loads on first open — or a moment early, on hover/focus.
+const loadShare = () => import('./ShareDialog.jsx');
+const ShareDialog = lazy(loadShare);
 import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
 import { layout, plates, edgesOf, nodeHeight, filmPosition, NODE_W } from './layout.js';
 import { normalize, dims, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
@@ -97,6 +100,7 @@ export default function App() {
   const [drawer, setDrawer] = useState(false);
   const [lightbox, setLightbox] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
+  const shareSeen = useRef(false); if (shareOpen) shareSeen.current = true; // stays mounted after the first open so its picks survive closing
   const [notes, setNotes] = useState([]); // stacked status pills: {id, kind, text, action}
   const [lastAdded, setLastAdded] = useState(null); // newest node id — its parent edge pulses briefly
   const [compare, setCompare] = useState(false);
@@ -601,7 +605,7 @@ export default function App() {
               <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.6"><rect x="5" y="1" width="4" height="3" rx=".8" /><rect x="1" y="10" width="4" height="3" rx=".8" /><rect x="9" y="10" width="4" height="3" rx=".8" /><path d="M7 4v3M7 7H3v3M7 7h4v3" /></svg>
               Auto-arrange
             </button>
-            <button className={edits.length ? 'share' : ''} disabled={!photosOf(nodes).some((n) => n.data.status === 'ready')} onClick={() => setShareOpen(true)} title="Turn this tree into something you can post">✦ Share</button>
+            <button className={edits.length ? 'share' : ''} disabled={!photosOf(nodes).some((n) => n.data.status === 'ready')} onClick={() => setShareOpen(true)} onPointerEnter={loadShare} onFocus={loadShare} title="Turn this tree into something you can post">✦ Share</button>
           </div>
         </Panel>
         <Panel position="top-right">
@@ -670,8 +674,12 @@ export default function App() {
         onExport={exportAll} onImport={() => fileRef.current.click()} onDemo={loadDemo} onClearDemo={demoIds.length ? clearDemo : null} narrow={narrow}
         hq={{ pending: hqPending, estimate: hqPending * avgCost * 1.5, differs: hqDiffers, run: reprocessAll }} />
       <Lightbox node={lightboxNode} onClose={() => setLightbox(null)} />
-      <ShareDialog open={shareOpen} nodes={nodes} focusId={selected[0]?.id} model={settings.model}
-        onClose={() => setShareOpen(false)} onToast={flash} />
+      {(shareOpen || shareSeen.current) && (
+        <Suspense fallback={null}>
+          <ShareDialog open={shareOpen} nodes={nodes} focusId={selected[0]?.id} model={settings.model}
+            onClose={() => setShareOpen(false)} onToast={flash} />
+        </Suspense>
+      )}
     </Ctx.Provider>
   );
 }
