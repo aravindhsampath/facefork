@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { listModels, priceOf, speedOf, RES_TIERS, snapResolution } from './api.js';
 
-export default function Settings({ open, settings, onChange, onClose, onExport, onImport, onDemo, onClearDemo, hq }) {
+export default function Settings({ open, settings, onChange, onClose, onExport, onImport, onDemo, onClearDemo, hq, narrow }) {
   const [status, setStatus] = useState('');
   const [price, setPrice] = useState(null);
   const models = settings.models || [];
@@ -87,6 +87,7 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
             : <button onClick={onDemo} title="Add the demo tree">🖼 Demo</button>}
         </div>
       </label>
+      {narrow && <p className="drawer-credit">Made by <a href="https://aravindh.net" target="_blank" rel="noreferrer">Aravindh</a> with Claude · <a href="https://github.com/aravindhsampath/facefork" target="_blank" rel="noreferrer">code on GitHub</a></p>}
       <h3>Shortcuts</h3>
       <small className="keys">
         <span><kbd>Enter</kbd> prompt</span><span><kbd>↑↓←→</kbd> walk the tree</span><span><kbd>Space</kbd> hold to compare</span>
