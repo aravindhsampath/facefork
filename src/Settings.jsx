@@ -21,7 +21,8 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
   };
 
   useEffect(() => { if (open && !models[0]?.resolutions) refresh(); }, [open]); // stale cache from older versions lacks fields
-  useEffect(() => { let live = true; setPrice(null); if (settings.model) priceOf(settings.model).then((v) => live && setPrice(v)); return () => { live = false; }; }, [settings.model]); // eslint-disable-line
+  // Priced only while the drawer is open: nothing contacts OpenRouter just because the page loaded.
+  useEffect(() => { let live = true; setPrice(null); if (open && settings.model) priceOf(settings.model).then((v) => live && setPrice(v)); return () => { live = false; }; }, [open, settings.model]); // eslint-disable-line
 
   const resSelect = (key) => (
     <select value={settings[key]} onChange={(e) => onChange({ [key]: e.target.value })}>
@@ -36,7 +37,7 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
       <label>
         OpenRouter API key
         <input type="password" value={settings.key || ''} placeholder="sk-or-v1-…" onChange={(e) => onChange({ key: e.target.value.trim() })} />
-        <small>Stored only in this browser (localStorage). <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get a key</a></small>
+        <small>Kept in this browser, sent only to OpenRouter. A dedicated key with a spending limit is wise. <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer">Get a key</a></small>
       </label>
       <label>
         Model
@@ -59,7 +60,7 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
         <label>Explore resolution {resSelect('exploreRes')}</label>
         <label>Download resolution {resSelect('downloadRes')}</label>
       </div>
-      <small>Explore cheap; ⬇ Download re-renders that one image at download resolution (same seed where the model supports it). Snapped to what the model offers.</small>
+      <small>Explore cheap. ⬇ Download always saves the image as it is; ↑ re-renders one at download resolution — a fresh generation (same seed where the model supports it), so it may differ. Snapped to what the model offers.</small>
       {hq && (
         <div className="row">
           <button disabled={!hq.differs || !hq.pending} onClick={hq.run} title="Walks the tree seed → leaves, re-rendering each image from its re-rendered parent">
@@ -87,6 +88,15 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
             : <button onClick={onDemo} title="Add the demo tree">🖼 Demo</button>}
         </div>
       </label>
+      <h3>Privacy</h3>
+      <small className="privacy">
+        Photos stay in this browser until you ask for an edit. Then the prompt and the reference photos go
+        straight to OpenRouter and the model provider you picked (<a href="https://openrouter.ai/docs/guides/privacy/provider-logging" target="_blank" rel="noreferrer">their logging policies</a>,
+        <a href="https://openrouter.ai/settings/privacy" target="_blank" rel="noreferrer"> your OpenRouter privacy settings</a>). facefork.com’s server only serves
+        this page; the browser is told it may not talk to anything but OpenRouter (Content-Security-Policy). Uploads are
+        re-encoded, which drops EXIF such as location. Your tree and key live in this browser’s storage: clear the site
+        data to remove them, or ⇩ Export first to keep the tree.
+      </small>
       {narrow && <p className="drawer-credit">Made by <a href="https://aravindh.net" target="_blank" rel="noreferrer">Aravindh</a> with Claude · <a href="https://github.com/aravindhsampath/facefork" target="_blank" rel="noreferrer">code on GitHub</a></p>}
       <h3>Shortcuts</h3>
       <small className="keys">

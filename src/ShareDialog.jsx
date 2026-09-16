@@ -261,8 +261,8 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
             <button className={copied === 'caption' ? 'copied' : ''} onClick={() => { navigator.clipboard.writeText(text).then(() => { flashCopied('caption'); onToast?.('Caption copied'); }, (e) => onToast?.(`Copy failed: ${e.message}`)); }} title="Copy the caption text to paste into a post">{copied === 'caption' ? '✓ Copied' : '⧉ Copy caption'}</button>
           </div>
           <p className="sb-fine">{SHARE_FILES
-            ? 'Share… hands the actual file to Messages, WhatsApp, Instagram, X and friends through your device’s share sheet. No website can post an image into those apps by link — their share links carry only text — so that sheet, or Download / Copy and attach, is the honest route. Nothing is uploaded until you post it.'
-            : 'This browser can’t hand files to other apps (Safari, Chrome and Edge can): Download or Copy the image and attach it in the app. No website can post an image into WhatsApp, Instagram or X by link — their share links carry only text. Nothing is uploaded until you post it.'}</p>
+            ? 'The file is made here and handed to the app you pick through your device’s share sheet — the only way a website can give an image to WhatsApp, Instagram or X.'
+            : 'The file is made here; this browser can’t hand files to other apps, so save or copy it and attach it in the app.'}</p>
         </aside>
       </div>
     </dialog>
