@@ -100,6 +100,7 @@ export default function App() {
   const [compare, setCompare] = useState(false);
   const [combineHint, setCombineHint] = useState(() => !localStorage.getItem(COMBINED));
   const narrow = useMedia(NARROW);
+  const touch = useMedia('(hover: none) and (pointer: coarse)');
   const [showMap, setShowMap] = useState(() => (localStorage.getItem(MAP_KEY) ?? (window.matchMedia(NARROW).matches ? '0' : '1')) !== '0');
   const [dropTarget, setDropTarget] = useState(null); // photo node under a card being dragged
   const clearDemoRef = useRef(null); // set once clearDemo exists (it is declared after addSeed)
@@ -115,8 +116,9 @@ export default function App() {
   const plateCache = useRef(new Map());
   const shown = useMemo(() => {
     const next = new Map();
-    const stable = plates(nodes).map((p) => {
-      const key = JSON.stringify([p.position, p.width, p.height, p.data]);
+    const stable = plates(nodes).map((p0) => {
+      const p = touch ? { ...p0, draggable: false } : p0; // on touch, a finger on the handle pans like everywhere else
+      const key = JSON.stringify([p.position, p.width, p.height, p.data, touch]);
       const prev = plateCache.current.get(p.id);
       const node = prev && prev.key === key ? prev.node : p;
       next.set(p.id, { key, node });
@@ -124,7 +126,7 @@ export default function App() {
     });
     plateCache.current = next;
     return [...stable, ...nodes];
-  }, [nodes]);
+  }, [nodes, touch]);
   const edges = useMemo(() => edgesOf(nodes).map((e) => (e.target === lastAdded ? { ...e, className: 'pulse' } : e)), [nodes, lastAdded]);
   const selected = useMemo(() => nodes.filter((n) => n.selected && n.type === 'photo'), [nodes]);
   const favourites = useMemo(() => photosOf(nodes).filter((n) => n.data.star && n.data.status === 'ready').map((n) => ({ id: n.id, url: n.data.url, prompt: n.data.prompt })), [nodes]);
@@ -299,6 +301,10 @@ export default function App() {
     const g = keyGate; setKeyGate(null);
     if (g) generate(g.parentIds, g.prompt, g.reuseId);
   };
+  // A key typed into ⚙ while the card is waiting counts too: run the request, drop the card.
+  useEffect(() => {
+    if (keyGate && settings.key) { const g = keyGate; setKeyGate(null); generate(g.parentIds, g.prompt, g.reuseId); }
+  }, [settings.key]); // eslint-disable-line
 
   const hqDiffers = model?.resolutions?.length > 0 && snapResolution(model.resolutions, settings.exploreRes) !== snapResolution(model.resolutions, settings.downloadRes);
 
@@ -450,8 +456,8 @@ export default function App() {
   }, [takeFiles]);
 
   const pickFile = useCallback(() => fileRef.current.click(), []);
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow]);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow, touch]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
   const soloId = selected.length === 1 ? selected[0].id : null;
   useEffect(() => {
@@ -502,6 +508,8 @@ export default function App() {
           if (b) setGraph((cur) => cur.map((x) => ({ ...x, className: '', selected: x.id === n.id || x.id === b })));
         }}
         nodesConnectable={false}
+        nodesDraggable={!touch}
+        zoomOnDoubleClick={false}
         deleteKeyCode={null}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
         selectionKeyCode="Shift"
@@ -568,13 +576,13 @@ export default function App() {
             <KeyGate onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
           </Panel>
         )}
-        {narrow && selected.length === 1 && selected[0].data.status === 'ready' && (
+        {narrow && !keyGate && selected.length === 1 && selected[0].data.status === 'ready' && (
           <Panel position="bottom-center" className="composer sheet">
             <div className="thumbs"><img src={selected[0].data.url} alt="" /></div>
             <PromptBox key={selected[0].id} autoFocus={false} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
           </Panel>
         )}
-        {selected.length > 1 && (
+        {selected.length > 1 && !keyGate && (
           <Panel position="bottom-center" className="composer">
             {crossSeed ? (
               <div className="pair" title="Photos of different people — ask for something that involves both">
