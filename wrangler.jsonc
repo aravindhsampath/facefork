@@ -1,0 +1,12 @@
+// Cloudflare Workers (static assets) config — no Worker code, just serve dist/ from the edge.
+// _headers in dist/ (from public/_headers) sets the cache policy.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "facefork",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "none",
+    "html_handling": "auto-trailing-slash"
+  }
+}

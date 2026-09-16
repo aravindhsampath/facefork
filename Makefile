@@ -11,10 +11,10 @@ gallery: node_modules demo/mona-780.jpg
 	node demo/build.mjs
 	open demo/dist/gallery.html
 
-# Ship dist/ to Cloudflare Pages (free plan, no card). First time: `npm exec -- wrangler login`,
-# then create the project once in the dashboard or with `wrangler pages project create facefork`.
+# Ship dist/ to Cloudflare Workers static assets (free plan, no card); config in wrangler.jsonc.
+# Normally unnecessary — pushes to main deploy via Workers Builds. First time: `npm exec -- wrangler login`.
 deploy: build
-	npm exec --yes -- wrangler@latest pages deploy dist --project-name facefork --commit-dirty=true
+	npm exec --yes -- wrangler@latest deploy
 
 # Regenerate the bundled demo tree (needs OPEN_ROUTER_KEY in .env; only missing images are generated).
 demo:
