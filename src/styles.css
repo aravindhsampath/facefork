@@ -408,7 +408,7 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
   .photo .acts { background: linear-gradient(transparent, rgba(0,0,0,.78)); padding-bottom: 7px; }
   .photo .acts button { padding: 4px 6px; font-size: 11px; }
   .photo .acts button i { font-size: 17px; }
-  .plate-handle { opacity: 1; }
+  .plate-handle { opacity: 1; cursor: default; pointer-events: none; }
   .edge-label:hover { width: auto; white-space: nowrap; }
 }
 
@@ -426,7 +426,7 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
   .toasts.lifted { bottom: 190px; }
   .react-flow__panel.maptoggle { margin-bottom: calc(15px + env(safe-area-inset-bottom)); }
   .react-flow__controls { margin-bottom: calc(15px + env(safe-area-inset-bottom)); }
-  .react-flow__panel.keygate { width: 100vw; max-width: none; left: 0 !important; transform: none !important; margin: 0 !important; }
+  .react-flow__panel.keygate { width: 100vw; max-width: none; left: 0 !important; transform: none !important; margin: 0 !important; z-index: 8; }
   .keygate-card { border-radius: 16px 16px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
   .drawer { width: 100vw; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   .lightbox img { max-height: 70vh; }
