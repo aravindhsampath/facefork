@@ -128,8 +128,8 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   // Safari only honours clipboard writes and window.open that happen synchronously inside the
   // click. So: hand ClipboardItem a *promise* of the PNG (allowed by the spec), open the composer
   // before any await, and do the rendering afterwards.
-  // Clipboard gets a 1x PNG: fast to produce inside the gesture and pastes anywhere. Size still governs Download.
-  const pngPromise = useCallback(() => { setWordmark(opts.mark !== false); return toBlob(render(fmt.build(tree, opts), 1), 'image/png'); }, [fmt, tree, opts]);
+  // Clipboard gets the same render as Download (Size applies); ClipboardItem takes the promise, so the gesture is kept.
+  const pngPromise = useCallback(() => { setWordmark(opts.mark !== false); return toBlob(render(fmt.build(tree, opts), SCALES[scale]), 'image/png'); }, [fmt, tree, opts, scale]);
   const copyImage = useCallback(() => {
     try {
       const item = new ClipboardItem({ 'image/png': pngPromise() });
