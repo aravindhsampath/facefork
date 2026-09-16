@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { listModels, priceOf, speedOf, RES_TIERS, snapResolution } from './api.js';
 
+const RECOMMENDED = 'google/gemini-3.1-flash-image'; // the one the demo was made with: fast, cheap, keeps faces
+
 export default function Settings({ open, settings, onChange, onClose, onExport, onImport, onDemo, onClearDemo, hq, narrow }) {
   const [status, setStatus] = useState('');
   const [price, setPrice] = useState(null);
@@ -44,7 +46,7 @@ export default function Settings({ open, settings, onChange, onClose, onExport, 
         <div className="row">
           <select value={settings.model || ''} onChange={(e) => onChange({ model: e.target.value })}>
             {!models.length && settings.model && <option value={settings.model}>{settings.model}</option>}
-            {models.map((m) => <option key={m.id} value={m.id}>{m.name}</option>)}
+            {[...models].sort((a, b) => (b.id === RECOMMENDED) - (a.id === RECOMMENDED)).map((m) => <option key={m.id} value={m.id}>{m.name}{m.id === RECOMMENDED ? ' · recommended' : ''}</option>)}
           </select>
           <button onClick={refresh} title="Refresh model list from OpenRouter">↻</button>
         </div>
