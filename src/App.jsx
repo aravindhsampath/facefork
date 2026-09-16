@@ -185,12 +185,16 @@ export default function App() {
     // Nothing stored yet (or storage unreadable) means a first visit: bring the demo. An emptied
     // canvas is stored as [] and stays empty. No separate "seen" flag, so a browser that cannot
     // keep the tree between reloads gets the demo again rather than a blank page.
-    loadGraph().catch(() => undefined).then(async (recs) => {
+    loadGraph().then(async (recs) => {
       if (recs?.length) addRecords(recs, { replace: true });
       else if (!recs) {
         try { addRecords(await demoRecords()); if (!localStorage.getItem(TOUR_SEEN)) setTour(true); } catch { /* offline: empty canvas */ }
       }
       loaded.current = true;
+    }, (e) => {
+      // Unreadable is not the same as empty: keep autosave off so nothing overwrites what may still be recoverable.
+      console.error(e);
+      notify('Couldn’t read the tree saved in this browser. Reload to try again; nothing has been overwritten.', { kind: 'error', ms: 0, id: 'noload' });
     });
   }, []); // eslint-disable-line
   const structural = nodes.map((n) => n.id + n.data.status + (n.data.star ? '*' : '') + (n.data.hqBlob ? 'H' : '') + (n.data.cost ?? '')).join();
