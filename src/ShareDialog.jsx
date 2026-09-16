@@ -18,6 +18,9 @@ const PLACES = [
 const kb = (b) => (b > 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const canShareFiles = (file) => { try { return !!navigator.canShare?.({ files: [file] }); } catch { return false; } };
 const canEncodeVideo = () => typeof VideoEncoder !== 'undefined';
+// Phones: the OS share sheet is the real path into Messages / Instagram / WhatsApp (and it has its own Copy).
+const TOUCH = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+const HAS_SHARE = 'share' in navigator;
 // ~300 kB of muxer + encoder: only pulled in when someone actually exports motion.
 const encoders = () => import('./share/video.js');
 
@@ -125,7 +128,8 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
   // Safari only honours clipboard writes and window.open that happen synchronously inside the
   // click. So: hand ClipboardItem a *promise* of the PNG (allowed by the spec), open the composer
   // before any await, and do the rendering afterwards.
-  const pngPromise = useCallback(() => { setWordmark(opts.mark !== false); return toBlob(render(fmt.build(tree, opts), SCALES[scale]), 'image/png'); }, [fmt, tree, opts, scale]);
+  // Clipboard gets a 1x PNG: fast to produce inside the gesture and pastes anywhere. Size still governs Download.
+  const pngPromise = useCallback(() => { setWordmark(opts.mark !== false); return toBlob(render(fmt.build(tree, opts), 1), 'image/png'); }, [fmt, tree, opts]);
   const copyImage = useCallback(() => {
     try {
       const item = new ClipboardItem({ 'image/png': pngPromise() });
@@ -243,9 +247,12 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
           )}
 
           <div className="sb-actions">
-            <button className="go" disabled={!!blocked || !!busy} onClick={() => run('download')}>{busy || '⬇ Download'}</button>
-            {fmt.kind === 'still' && <button className={copied === 'image' ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('copy')}>{copied === 'image' ? '✓ Copied' : '⧉ Copy image'}</button>}
-            {'share' in navigator && <button disabled={!!blocked || !!busy} onClick={() => run('share')} title="Your device’s share sheet — the way into Instagram, TikTok, Messages">⤴ Share…</button>}
+            {TOUCH && HAS_SHARE
+              ? <button className="go" disabled={!!blocked || !!busy} onClick={() => run('share')}>{busy || '⤴ Share…'}</button>
+              : <button className="go" disabled={!!blocked || !!busy} onClick={() => run('download')}>{busy || '⬇ Download'}</button>}
+            {TOUCH && HAS_SHARE && <button disabled={!!blocked || !!busy} onClick={() => run('download')}>⬇ Save</button>}
+            {!TOUCH && fmt.kind === 'still' && <button className={copied === 'image' ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('copy')}>{copied === 'image' ? '✓ Copied' : '⧉ Copy image'}</button>}
+            {!TOUCH && HAS_SHARE && <button disabled={!!blocked || !!busy} onClick={() => run('share')} title="Your device’s share sheet">⤴ Share…</button>}
             {fmt.id === 'html' && <button disabled={!!busy} onClick={() => run('open')}>↗ Open it</button>}
           </div>
           {busy && prog > 0 && <div className="sb-prog"><i style={{ width: `${prog * 100}%` }} /></div>}
@@ -255,11 +262,13 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
             <textarea rows={3} value={text} onChange={(e) => { setText(e.target.value); setTextTouched(true); }} />
           </label>
           <div className="sb-places">
-            <span>Post to</span>
-            {PLACES.map((p) => <button key={p[0]} className={copied === p[0] ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('post', p)} title={fmt.kind === 'still' ? `Copies the image, opens ${p[0]} with the caption — paste the image in` : `Downloads the file, opens ${p[0]} with the caption — attach the file`}>{copied === p[0] ? '✓ Copied' : p[0]}</button>)}
+            {!TOUCH && <span>Post to</span>}
+            {!TOUCH && PLACES.map((p) => <button key={p[0]} className={copied === p[0] ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('post', p)} title={fmt.kind === 'still' ? `Copies the image, opens ${p[0]} with the caption — paste the image in` : `Downloads the file, opens ${p[0]} with the caption — attach the file`}>{copied === p[0] ? '✓ Copied' : p[0]}</button>)}
             <button className={copied === 'caption' ? 'copied' : ''} onClick={() => { navigator.clipboard.writeText(text).then(() => { flashCopied('caption'); onToast?.('Caption copied'); }, (e) => onToast?.(`Copy failed: ${e.message}`)); }} title="Copy the caption text to paste into a post">{copied === 'caption' ? '✓ Copied' : '⧉ Copy caption'}</button>
           </div>
-          <p className="sb-fine">Instagram and TikTok only accept uploads from the phone — use ⤴ Share… there. Everything is made in this browser; nothing is uploaded until you post it.</p>
+          <p className="sb-fine">{TOUCH && HAS_SHARE
+            ? 'Share… opens your phone’s share sheet — Messages, Instagram, WhatsApp, X, or Copy. Everything is made in this browser; nothing is uploaded until you post it.'
+            : 'Instagram and TikTok only accept uploads from the phone — use Share… there. Everything is made in this browser; nothing is uploaded until you post it.'}</p>
         </aside>
       </div>
     </dialog>
