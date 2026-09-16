@@ -4,6 +4,7 @@ import { Ctx } from './ctx.js';
 import PhotoNode from './PhotoNode.jsx';
 import Filmstrip from './Filmstrip.jsx';
 import Plate from './Plate.jsx';
+import Adder from './Adder.jsx';
 import Tour from './Tour.jsx';
 import PromptEdge from './PromptEdge.jsx';
 import PromptBox from './PromptBox.jsx';
@@ -18,10 +19,11 @@ import { loadGraph, saveGraph, loadSettings, saveSettings } from './store.js';
 import { exportTree, importTree } from './share.js';
 import { demoRecords } from './demo.js';
 
-const nodeTypes = { photo: PhotoNode, filmstrip: Filmstrip, plate: Plate };
+const nodeTypes = { photo: PhotoNode, filmstrip: Filmstrip, plate: Plate, adder: Adder };
 const edgeTypes = { prompt: PromptEdge };
 const DEFAULTS = { model: 'google/gemini-3.1-flash-image', exploreRes: '1K', downloadRes: '2K', theme: 'system' };
 const FILM = { id: 'film', type: 'filmstrip', position: { x: 0, y: 0 }, selectable: false, data: { pinned: false } };
+const ADDER = { id: 'adder', type: 'adder', position: { x: 0, y: 0 }, selectable: false, draggable: false, focusable: false, data: {} };
 // Storage keys keep the old prefix on purpose: renaming them would drop everyone's saved tree and key.
 const DEMO_SEEN = 'howdoilook.demoSeen';
 const COMBINED = 'howdoilook.combined';
@@ -39,10 +41,14 @@ const isImage = (f) => f?.type.startsWith('image/');
 const isTree = (f) => /\.(facefork|howdoilook)$/i.test(f?.name || '');
 
 // Keep the filmstrip node iff something is starred.
+// Keep the filmstrip node iff something is starred, and the "add your photo" card while the
+// canvas holds only the demo.
 function withFilm(nodes) {
   const photos = photosOf(nodes);
   const film = nodes.find((n) => n.type === 'filmstrip');
-  return photos.some((n) => n.data.star) ? [...photos, film || FILM] : photos;
+  const out = photos.some((n) => n.data.star) ? [...photos, film || FILM] : [...photos];
+  if (photos.length && !photos.some((n) => !n.data.demo && !n.data.parents.length)) out.push(ADDER);
+  return out;
 }
 
 // All descendants of `ids` (inclusive) in the parent-pointer DAG.
@@ -434,8 +440,9 @@ export default function App() {
     };
   }, [takeFiles]);
 
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint]);
+  const pickFile = useCallback(() => fileRef.current.click(), []);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
 
   // Multi-select composer: cross-seed selections get "swap our outfits" style prompts.
@@ -487,6 +494,17 @@ export default function App() {
         <Background gap={24} />
         <Controls showInteractive={false} />
         {showMap && <MiniMap pannable zoomable nodeColor={(n) => (n.type === 'photo' ? '#3b82f6' : 'transparent')} nodeStrokeWidth={0} />}
+        <Panel position="bottom-left" className="credit">
+          <span>Made by <a href="https://aravindh.net" target="_blank" rel="noreferrer">Aravindh</a> with</span>
+          <a href="https://claude.ai" target="_blank" rel="noreferrer" title="Claude" aria-label="Claude">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="#d97757" aria-hidden="true"><path d="M12 2.2l1.2 5.6 4.1-4 -2.6 5.1 5.6-.7-5 2.8 5 2.8-5.6-.7 2.6 5.1-4.1-4L12 21.8l-1.2-5.6-4.1 4 2.6-5.1-5.6.7 5-2.8-5-2.8 5.6.7-2.6-5.1 4.1 4z" /></svg>
+          </a>
+          <i />
+          <span>Code</span>
+          <a href="https://github.com/aravindhsampath/facefork" target="_blank" rel="noreferrer" title="Source on GitHub" aria-label="Source on GitHub">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" /></svg>
+          </a>
+        </Panel>
         <Panel position="bottom-right" className="maptoggle">
           <button onClick={() => setShowMap((v) => { localStorage.setItem(MAP_KEY, v ? '0' : '1'); return !v; })} title={showMap ? 'Hide the minimap' : 'Show the minimap'}>{showMap ? '▭ hide map' : '▭ map'}</button>
         </Panel>

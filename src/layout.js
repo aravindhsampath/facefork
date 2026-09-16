@@ -3,6 +3,7 @@ import dagre from '@dagrejs/dagre';
 export const NODE_W = 220;
 export const FOOTER_H = 36;
 export const FILM_W = 180;
+export const ADDER_H = 300;
 
 export const imageHeight = (d) => Math.round(NODE_W * (d.h / d.w));
 export const nodeHeight = (d) => imageHeight(d) + FOOTER_H;
@@ -20,12 +21,15 @@ export function layout(nodes) {
   const photos = nodes.filter((n) => n.type === 'photo');
   const g = new dagre.graphlib.Graph().setDefaultEdgeLabel(() => ({}));
   g.setGraph({ rankdir: 'TB', nodesep: 50, ranksep: 80 });
+  const adder = nodes.find((n) => n.type === 'adder');
   for (const n of photos) g.setNode(n.id, { width: NODE_W, height: nodeHeight(n.data) });
+  if (adder) g.setNode(adder.id, { width: NODE_W, height: ADDER_H });
   for (const e of edgesOf(photos)) g.setEdge(e.source, e.target);
   // Seeds stay on the top row even when a cross-tree merge would otherwise pull one of them down
   // to its partner's rank: a hidden root above every seed, with heavy edges dagre prefers to keep short.
   g.setNode('__root', { width: 1, height: 1 });
   for (const n of photos) if (!n.data.parents.length) g.setEdge('__root', n.id, { weight: 4 });
+  if (adder) g.setEdge('__root', adder.id, { weight: 4 });
   dagre.layout(g);
   let minX = Infinity, minY = Infinity;
   const laid = photos.map((n) => {
@@ -35,6 +39,12 @@ export function layout(nodes) {
     minX = Math.min(minX, position.x); minY = Math.min(minY, position.y);
     return { ...n, width: NODE_W, height, position };
   });
+  if (adder) {
+    const { x, y } = g.node(adder.id);
+    const position = { x: x - NODE_W / 2, y: y - ADDER_H / 2 };
+    minX = Math.min(minX, position.x); minY = Math.min(minY, position.y);
+    laid.push({ ...adder, width: NODE_W, height: ADDER_H, position });
+  }
   const film = nodes.find((n) => n.type === 'filmstrip');
   if (film) laid.push(film.data.pinned ? film : { ...film, position: { x: minX - FILM_W - 80, y: minY } });
   return laid;
