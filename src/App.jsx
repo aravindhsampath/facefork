@@ -591,9 +591,9 @@ export default function App() {
           <div className="brand">
             <b>
               <svg className="mark" width="22" height="22" viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="15" fill="#3b82f6" /><path d="M32 22v8M32 30Q32 40 20 44M32 30Q32 40 44 44" fill="none" stroke="#fff" strokeWidth="5.5" strokeLinecap="round" strokeLinejoin="round" /><circle cx="32" cy="16" r="7.5" fill="#fff" /><circle cx="18" cy="49" r="7" fill="#fff" /><circle cx="46" cy="49" r="7" fill="#fff" /></svg>
-              <span>face<em>fork</em></span>
+              <span className="wordmark">face<em>fork</em></span>
             </b>
-            <span>Upload a photo, ask “what if…”, every answer becomes a branch.</span>
+            <span className="tag">Upload a photo, ask “what if…”, every answer becomes a branch.</span>
           </div>
           <div className="toolbar">
             <button onClick={() => fileRef.current.click()} title={photosOf(nodes).length ? 'Add another person to compare or combine' : 'Upload a photo — or drop / paste one anywhere'}>＋ New photo</button>
