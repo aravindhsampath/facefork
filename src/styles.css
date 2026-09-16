@@ -29,7 +29,9 @@ button { cursor: pointer; }
 
 .top { display: flex; flex-direction: column; gap: 10px; }
 .brand { display: flex; flex-direction: column; gap: 2px; padding: 2px 4px; }
-.brand b { font-size: 16px; letter-spacing: -.01em; }
+.brand b { display: flex; align-items: center; gap: 8px; font-size: 17px; font-weight: 600; letter-spacing: -.02em; }
+.brand b em { font-style: normal; font-weight: 800; color: var(--accent); margin-left: -1px; }
+.brand .mark { border-radius: 6px; box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 40%, transparent); }
 .brand span { color: var(--muted); font-size: 12.5px; }
 .toolbar button svg { vertical-align: -2px; margin-right: 5px; }
 
