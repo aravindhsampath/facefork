@@ -5,22 +5,14 @@ import { downloadBlob } from './image.js';
 const SCALES = { '1x': 1, '2x': 2, '3x': 3 };
 const IMG_TYPES = { 'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WebP' };
 const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
-// Where people actually post these. None accept an image by URL from a browser, so each button
-// copies the image (or downloads the video) and opens the composer with the caption pre-filled.
-const PLACES = [
-  ['X', (t) => `https://x.com/intent/post?text=${t}`],
-  ['Threads', (t) => `https://www.threads.net/intent/post?text=${t}`],
-  ['Bluesky', (t) => `https://bsky.app/intent/compose?text=${t}`],
-  ['Reddit', (t) => `https://www.reddit.com/submit?title=${t}`],
-  ['WhatsApp', (t) => `https://wa.me/?text=${t}`],
-  ['Telegram', (t) => `https://t.me/share/url?url=${encodeURIComponent('https://facefork.com')}&text=${t}`],
-];
 const kb = (b) => (b > 1 << 20 ? `${(b / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
 const canShareFiles = (file) => { try { return !!navigator.canShare?.({ files: [file] }); } catch { return false; } };
+// Whether this browser can hand a file to other apps at all (Safari, Chrome/Edge; not Firefox) — probed once with a dummy file.
+const SHARE_FILES = canShareFiles(new File([new Uint8Array(4)], 'probe.png', { type: 'image/png' }));
 const canEncodeVideo = () => typeof VideoEncoder !== 'undefined';
 // Phones: the OS share sheet is the real path into Messages / Instagram / WhatsApp (and it has its own Copy).
 const TOUCH = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
-const HAS_SHARE = 'share' in navigator;
+
 // ~300 kB of muxer + encoder: only pulled in when someone actually exports motion.
 const encoders = () => import('./share/video.js');
 
@@ -141,12 +133,6 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
     if (what === 'copy') {
       return copyImage().then(() => { flashCopied('image'); onToast?.('Image copied — paste it anywhere'); }, (e) => onToast?.(`Copy failed: ${e.message}`));
     }
-    if (what === 'post') {
-      // Composer first, synchronously; then the image onto the clipboard (stills) or as a download (motion / files).
-      window.open(place[1](encodeURIComponent(text)), '_blank', 'noopener');
-      if (fmt.kind === 'still') return copyImage().then(() => { flashCopied(place[0]); onToast?.(`Image copied — paste it into your ${place[0]} post`, 6000); }, (e) => onToast?.(`Copy failed: ${e.message}`));
-      return get().then((out) => { if (out) { downloadBlob(out.blob, out.name); onToast?.(`Downloaded — attach it to your ${place[0]} post`, 6000); } }).catch((e) => { if (e.name !== 'AbortError') onToast?.(`Export failed: ${e.message}`); });
-    }
     return (async () => {
       try {
         const out = await get();
@@ -247,12 +233,12 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
           )}
 
           <div className="sb-actions">
-            {TOUCH && HAS_SHARE
+            {TOUCH && SHARE_FILES
               ? <button className="go" disabled={!!blocked || !!busy} onClick={() => run('share')}>{busy || '⤴ Share…'}</button>
               : <button className="go" disabled={!!blocked || !!busy} onClick={() => run('download')}>{busy || '⬇ Download'}</button>}
-            {TOUCH && HAS_SHARE && <button disabled={!!blocked || !!busy} onClick={() => run('download')}>⬇ Save</button>}
+            {TOUCH && SHARE_FILES && <button disabled={!!blocked || !!busy} onClick={() => run('download')}>⬇ Save</button>}
+            {!TOUCH && SHARE_FILES && <button disabled={!!blocked || !!busy} onClick={() => run('share')} title="Your system’s share sheet — Messages, AirDrop, Mail, WhatsApp Desktop…">⤴ Share…</button>}
             {!TOUCH && fmt.kind === 'still' && <button className={copied === 'image' ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('copy')}>{copied === 'image' ? '✓ Copied' : '⧉ Copy image'}</button>}
-            {!TOUCH && HAS_SHARE && <button disabled={!!blocked || !!busy} onClick={() => run('share')} title="Your device’s share sheet">⤴ Share…</button>}
             {fmt.id === 'html' && <button disabled={!!busy} onClick={() => run('open')}>↗ Open it</button>}
           </div>
           {busy && prog > 0 && <div className="sb-prog"><i style={{ width: `${prog * 100}%` }} /></div>}
@@ -262,13 +248,11 @@ export default function ShareDialog({ open, nodes, focusId, model, onClose, onTo
             <textarea rows={3} value={text} onChange={(e) => { setText(e.target.value); setTextTouched(true); }} />
           </label>
           <div className="sb-places">
-            {!TOUCH && <span>Post to</span>}
-            {!TOUCH && PLACES.map((p) => <button key={p[0]} className={copied === p[0] ? 'copied' : ''} disabled={!!blocked || !!busy} onClick={() => run('post', p)} title={fmt.kind === 'still' ? `Copies the image, opens ${p[0]} with the caption — paste the image in` : `Downloads the file, opens ${p[0]} with the caption — attach the file`}>{copied === p[0] ? '✓ Copied' : p[0]}</button>)}
             <button className={copied === 'caption' ? 'copied' : ''} onClick={() => { navigator.clipboard.writeText(text).then(() => { flashCopied('caption'); onToast?.('Caption copied'); }, (e) => onToast?.(`Copy failed: ${e.message}`)); }} title="Copy the caption text to paste into a post">{copied === 'caption' ? '✓ Copied' : '⧉ Copy caption'}</button>
           </div>
-          <p className="sb-fine">{TOUCH && HAS_SHARE
-            ? 'Share… opens your phone’s share sheet — Messages, Instagram, WhatsApp, X, or Copy. Everything is made in this browser; nothing is uploaded until you post it.'
-            : 'Instagram and TikTok only accept uploads from the phone — use Share… there. Everything is made in this browser; nothing is uploaded until you post it.'}</p>
+          <p className="sb-fine">{SHARE_FILES
+            ? 'Share… hands the actual file to Messages, WhatsApp, Instagram, X and friends through your device’s share sheet. No website can post an image into those apps by link — their share links carry only text — so that sheet, or Download / Copy and attach, is the honest route. Nothing is uploaded until you post it.'
+            : 'This browser can’t hand files to other apps (Safari, Chrome and Edge can): Download or Copy the image and attach it in the app. No website can post an image into WhatsApp, Instagram or X by link — their share links carry only text. Nothing is uploaded until you post it.'}</p>
         </aside>
       </div>
     </dialog>
