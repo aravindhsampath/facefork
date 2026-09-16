@@ -400,3 +400,41 @@ kbd { background: var(--bg); border: 1px solid var(--border); border-radius: 4px
 .credit a:hover { color: var(--accent); border-bottom-color: var(--accent); }
 .credit a svg { display: block; }
 .credit i { width: 1px; height: 14px; background: var(--border); margin: 0 3px; }
+
+/* ---- touch: nothing may depend on hover ---- */
+@media (hover: none) {
+  .photo .chk { opacity: .85; }
+  .photo .x, .photo .acts { opacity: 1; }
+  .photo .acts { background: linear-gradient(transparent, rgba(0,0,0,.78)); padding-bottom: 7px; }
+  .photo .acts button { padding: 4px 6px; font-size: 11px; }
+  .photo .acts button i { font-size: 17px; }
+  .plate-handle { opacity: 1; }
+  .edge-label:hover { width: auto; white-space: nowrap; }
+}
+
+/* ---- phones ---- */
+@media (max-width: 720px) {
+  .brand span { padding-right: 84px; font-size: 12px; }
+  .toolbar { flex-wrap: wrap; }
+  .toolbar button { padding: 7px 11px; font-size: 13px; }
+  .react-flow__panel.credit { display: none; }
+  .react-flow__minimap { transform: scale(.6); transform-origin: bottom right; margin-bottom: 44px; }
+  .composer { width: 100vw; max-width: none; left: 0 !important; right: 0 !important; transform: none !important; margin: 0 !important; border-radius: 16px 16px 0 0; border-bottom: none; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); box-shadow: 0 -12px 40px var(--shadow); }
+  .composer.sheet .thumbs img { width: 52px; height: 52px; }
+  .composer .prompt textarea { font-size: 16px; } /* iOS zooms into inputs smaller than 16px */
+  .prompt textarea, .drawer input, .drawer select, .keygate-card input { font-size: 16px; }
+  .toasts.lifted { bottom: 190px; }
+  .react-flow__panel.maptoggle { margin-bottom: calc(15px + env(safe-area-inset-bottom)); }
+  .react-flow__controls { margin-bottom: calc(15px + env(safe-area-inset-bottom)); }
+  .react-flow__panel.keygate { width: 100vw; max-width: none; left: 0 !important; transform: none !important; margin: 0 !important; }
+  .keygate-card { border-radius: 16px 16px 0 0; padding-bottom: calc(14px + env(safe-area-inset-bottom)); }
+  .drawer { width: 100vw; padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
+  .lightbox img { max-height: 70vh; }
+  .lightbox figcaption { flex-wrap: wrap; justify-content: center; }
+  .lb-hint { display: none; }
+  .drop-zone { padding: 36px 20px; }
+  .drop-zone p { font-size: 17px; }
+  .empty .link { margin-bottom: 120px; }
+}
+.drawer-credit { margin: 4px 0 0; font-size: 12px; color: var(--muted); }
+.drawer-credit a { color: var(--accent); }

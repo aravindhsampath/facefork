@@ -13,7 +13,7 @@ function useElapsed(since, running) {
 }
 
 function PhotoNode({ id, data, selected }) {
-  const { selectedCount, compare, generate, remove, open, toggleStar, download, combineHint } = useContext(Ctx);
+  const { selectedCount, compare, generate, remove, open, toggleStar, download, combineHint, narrow } = useContext(Ctx);
   const rf = useReactFlow();
   const ready = data.status === 'ready';
   const loading = data.status === 'loading';
@@ -68,11 +68,11 @@ function PhotoNode({ id, data, selected }) {
           </>
         )}
       </div>
-      {selected && selectedCount === 1 && ready && (
+      {!narrow && selected && selectedCount === 1 && ready && (
         <PromptBox chips={chipsFor(id)} onSubmit={(t) => generate([id], t)}
           hint={combineHint ? 'Tick ☑ another photo to combine them (even from another person), or drag one onto this card.' : ''} />
       )}
-      {!selected && ready && <div className="prompt mini"><span>What if…</span><b>➤</b></div>}
+      {!narrow && !selected && ready && <div className="prompt mini"><span>What if…</span><b>➤</b></div>}
       <Handle type="target" position={Position.Top} />
       <Handle type="source" position={Position.Bottom} />
     </div>

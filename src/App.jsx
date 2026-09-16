@@ -11,7 +11,7 @@ import PromptBox from './PromptBox.jsx';
 import Lightbox from './Lightbox.jsx';
 import Settings from './Settings.jsx';
 import ShareDialog from './ShareDialog.jsx';
-import { SAME_SEED, CROSS_SEED } from './chips.js';
+import { SAME_SEED, CROSS_SEED, chipsFor } from './chips.js';
 import { layout, plates, edgesOf, nodeHeight, NODE_W } from './layout.js';
 import { normalize, toInline, base64ToBlob, downloadBlob, extOf } from './image.js';
 import { generateImage, buildPrompt, pickRatio, snapResolution } from './api.js';
@@ -25,6 +25,14 @@ const DEFAULTS = { model: 'google/gemini-3.1-flash-image', exploreRes: '1K', dow
 const FILM = { id: 'film', type: 'filmstrip', position: { x: 0, y: 0 }, selectable: false, data: { pinned: false } };
 const ADDER = { id: 'adder', type: 'adder', position: { x: 0, y: 0 }, selectable: false, draggable: false, focusable: false, data: {} };
 // Storage keys keep the old prefix on purpose: renaming them would drop everyone's saved tree and key.
+// Narrow screens get a bottom-sheet prompt instead of the one hanging under the card.
+const NARROW = '(max-width: 720px)';
+function useMedia(q) {
+  const [m, setM] = useState(() => window.matchMedia(q).matches);
+  useEffect(() => { const mq = window.matchMedia(q); const on = () => setM(mq.matches); mq.addEventListener('change', on); return () => mq.removeEventListener('change', on); }, [q]);
+  return m;
+}
+
 const DEMO_SEEN = 'howdoilook.demoSeen';
 const COMBINED = 'howdoilook.combined';
 const MAP_KEY = 'howdoilook.minimap';
@@ -91,7 +99,8 @@ export default function App() {
   const [lastAdded, setLastAdded] = useState(null); // newest node id — its parent edge pulses briefly
   const [compare, setCompare] = useState(false);
   const [combineHint, setCombineHint] = useState(() => !localStorage.getItem(COMBINED));
-  const [showMap, setShowMap] = useState(() => localStorage.getItem(MAP_KEY) !== '0');
+  const narrow = useMedia(NARROW);
+  const [showMap, setShowMap] = useState(() => (localStorage.getItem(MAP_KEY) ?? (window.matchMedia(NARROW).matches ? '0' : '1')) !== '0');
   const [dropTarget, setDropTarget] = useState(null); // photo node under a card being dragged
   const clearDemoRef = useRef(null); // set once clearDemo exists (it is declared after addSeed)
   const plateDrag = useRef(null); // {origin, starts: Map<id, position>} while a plate handle is being dragged
@@ -441,9 +450,20 @@ export default function App() {
   }, [takeFiles]);
 
   const pickFile = useCallback(() => fileRef.current.click(), []);
-  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile }),
-    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile]);
+  const ctx = useMemo(() => ({ selectedCount: selected.length, compare, setCompare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow }),
+    [selected.length, compare, favourites, generate, remove, open, toggleStar, download, combineHint, pickFile, narrow]);
   const lightboxNode = lightbox ? nodes.find((n) => n.id === lightbox) : null;
+  const soloId = selected.length === 1 ? selected[0].id : null;
+  useEffect(() => {
+    if (!narrow || !soloId) return;
+    const n = rf.getNode(soloId);
+    if (!n) return;
+    const zoom = Math.max(rf.getZoom(), 0.8);
+    // Centre the card in the upper part of the screen; the prompt sheet takes the bottom ~40%.
+    const box = document.querySelector('.react-flow')?.getBoundingClientRect();
+    const lift = box ? (box.height * 0.12) / zoom : 0;
+    rf.setCenter(n.position.x + NODE_W / 2, n.position.y + (n.height || 300) / 2 + lift, { zoom, duration: 250 });
+  }, [narrow, soloId]); // eslint-disable-line
 
   // Multi-select composer: cross-seed selections get "swap our outfits" style prompts.
   const byId = useMemo(() => new Map(nodes.map((n) => [n.id, n])), [nodes]);
@@ -548,6 +568,12 @@ export default function App() {
             <KeyGate onSave={saveKeyAndGo} onCancel={() => setKeyGate(null)} />
           </Panel>
         )}
+        {narrow && selected.length === 1 && selected[0].data.status === 'ready' && (
+          <Panel position="bottom-center" className="composer sheet">
+            <div className="thumbs"><img src={selected[0].data.url} alt="" /></div>
+            <PromptBox key={selected[0].id} autoFocus={false} chips={chipsFor(selected[0].id)} onSubmit={(t) => generate([selected[0].id], t)} />
+          </Panel>
+        )}
         {selected.length > 1 && (
           <Panel position="bottom-center" className="composer">
             {crossSeed ? (
@@ -581,7 +607,7 @@ export default function App() {
       {dropping && <div className="drop">Drop to add a seed (or import a .facefork)</div>}
       <input ref={fileRef} type="file" accept="image/*,.facefork,.howdoilook" multiple hidden onChange={(e) => { takeFiles([...e.target.files]); e.target.value = ''; }} />
       <Settings open={drawer} settings={settings} onChange={updateSettings} onClose={() => setDrawer(false)}
-        onExport={exportAll} onImport={() => fileRef.current.click()} onDemo={loadDemo} onClearDemo={demoIds.length ? clearDemo : null}
+        onExport={exportAll} onImport={() => fileRef.current.click()} onDemo={loadDemo} onClearDemo={demoIds.length ? clearDemo : null} narrow={narrow}
         hq={{ pending: hqPending, estimate: hqPending * avgCost * 1.5, differs: hqDiffers, run: reprocessAll }} />
       <Lightbox node={lightboxNode} onClose={() => setLightbox(null)} />
       <ShareDialog open={shareOpen} nodes={nodes} focusId={selected[0]?.id} model={settings.model}
