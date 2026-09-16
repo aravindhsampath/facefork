@@ -3,18 +3,20 @@
 
 import { rngOf } from './scene.js';
 
-// Decoded images, bounded two ways so a big tree cannot exhaust canvas memory (Safari then
-// silently draws nothing): each is resampled to ≤ MAX_EDGE and kept in a small LRU. A plain
-// canvas is the most portable CanvasImageSource; the full-size ImageBitmap is closed at once.
+// Decoded images, bounded three ways so a big tree cannot exhaust canvas memory (Safari then
+// silently draws nothing): each is resampled to ≤ MAX_EDGE, the whole build stays under a pixel
+// budget (a 100-image tree decodes at ~800 px rather than 1600), and a small LRU is kept across
+// builds. A plain canvas is the most portable CanvasImageSource; the ImageBitmap is closed at once.
 const MAX_EDGE = 1600;
+const BUDGET_PX = 64e6; // ≈ 256 MiB of RGBA for one built tree
 const LRU_SIZE = 24;
 const decoded = new Map(); // blob -> HTMLCanvasElement, insertion order = age
 
-async function bitmapOf(blob) {
+async function bitmapOf(blob, maxEdge = MAX_EDGE) {
   const hit = decoded.get(blob);
   if (hit) { decoded.delete(blob); decoded.set(blob, hit); return hit; }
   const bmp = await createImageBitmap(blob);
-  const s = Math.min(1, MAX_EDGE / Math.max(bmp.width, bmp.height));
+  const s = Math.min(1, maxEdge / Math.max(bmp.width, bmp.height));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(bmp.width * s));
   c.height = Math.max(1, Math.round(bmp.height * s));
@@ -67,9 +69,13 @@ export const familyOf = (t, n) => {
 export async function buildTree(nodes, { focusId, model = '', settings = {} } = {}) {
   const candidates = nodes.filter((n) => n.type === 'photo' && n.data.status === 'ready' && n.data.blob);
   const bmp = new Map();
-  // One undecodable image drops that node, not the whole dialog.
-  await Promise.all(candidates.map(async (n) => {
-    try { bmp.set(n.id, await bitmapOf(n.data.hqBlob || n.data.blob)); } catch (e) { console.warn('share: could not decode', n.id, e); }
+  const maxEdge = Math.min(MAX_EDGE, Math.floor(Math.sqrt(BUDGET_PX / Math.max(1, candidates.length))));
+  // One undecodable image drops that node, not the whole dialog. Four at a time keeps peak memory flat.
+  const queue = [...candidates];
+  await Promise.all(Array.from({ length: 4 }, async () => {
+    for (let n = queue.shift(); n; n = queue.shift()) {
+      try { bmp.set(n.id, await bitmapOf(n.data.hqBlob || n.data.blob, maxEdge)); } catch (e) { console.warn('share: could not decode', n.id, e); }
+    }
   }));
   const ready = candidates.filter((n) => bmp.has(n.id));
   const byId = new Map(ready.map((n) => [n.id, n]));
