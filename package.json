@@ -1,6 +1,7 @@
 {
   "name": "facefork",
   "private": true,
+  "license": "0BSD",
   "version": "0.1.0",
   "type": "module",
   "scripts": {

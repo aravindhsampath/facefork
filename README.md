@@ -35,4 +35,5 @@ The bundled demo tree was generated once with `make demo` (needs `OPEN_ROUTER_KE
 
 ## License
 
-MIT
+[0BSD](LICENSE) — do whatever you want with it; no attribution required. The demo portrait of
+“Sam” is AI-generated; the Mona Lisa is public domain.
