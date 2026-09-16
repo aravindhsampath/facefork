@@ -27,8 +27,8 @@ offers; the default is Nano Banana 2 at about $0.07 per image.
 - Generation through OpenRouter’s image API, called directly from the browser.
 - Your tree lives in IndexedDB; `⇩ Export` writes a `.facefork` file (zip of JPEGs + graph).
 - Share formats are rendered on a canvas in the browser; clips are encoded with WebCodecs.
-- Fully static: `npm run build` → `dist/`, deployable to any static host (`make deploy` targets
-  Cloudflare Pages).
+- Fully static: `npm run build` → `dist/`, deployable to any static host (it runs on
+  Cloudflare Workers static assets; see `wrangler.jsonc`).
 
 The bundled demo tree was generated once with `make demo` (needs `OPEN_ROUTER_KEY` in `.env`);
 “Sam” is an AI-generated portrait, the other sitter is Leonardo’s.
