@@ -1,8 +1,11 @@
-.PHONY: dev build gallery demo deploy clean
+.PHONY: dev build test gallery demo deploy clean
 dev: node_modules
 	npm run dev
 build: node_modules
 	npm run build
+# Regression tests for the parts that bit before: SSE framing and .facefork validation (node --test, no extra deps).
+test: node_modules
+	npm test
 
 # Share-format specimen gallery: bundles src/share and inlines it with the demo painting
 # into one self-contained page. Everything stays on this machine.
